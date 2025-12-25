@@ -9,7 +9,7 @@ Screen Short </br>
 ### 1. Clone โปรเจกต์ (Clone Repository)
 เปิด Terminal หรือ Command Prompt แล้วพิมพ์คำสั่งเพื่อดึงซอร์สโค้ดลงมาที่เครื่อง
 ```
-git clone [https://github.com/your-username/money-tracker.git](https://github.com/your-username/money-tracker.git)
+git clone https://github.com/xIaMMaIx/money_tracker.git
 cd money-tracker
 ```
 2. สร้างจำลองสภาพแวดล้อม (Virtual Environment)
