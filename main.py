@@ -150,9 +150,8 @@ def main(page: ft.Page):
     
     btn_to_full = ft.IconButton(icon="dashboard", icon_color="white24", icon_size=24, on_click=lambda _: switch_view("full"))
     txt_simple_date = ft.Text("Date", size=28, weight="bold", color="white")
-
     
-# ///////////////////////////////////////////////////////////////
+    # ///////////////////////////////////////////////////////////////
     # [SECTION 5] CORE LOGIC (REFRESH & UPDATE)
     # ///////////////////////////////////////////////////////////////
     def update_all_labels():
@@ -655,7 +654,7 @@ def main(page: ft.Page):
     btn_income.on_click = lambda e: start_listen(e, "income")
     
     
-    # ///////////////////////////////////////////////////////////////
+# ///////////////////////////////////////////////////////////////
     # [SECTION 9] VIEW BUILDERS
     # ///////////////////////////////////////////////////////////////
     def build_full_view():
@@ -669,26 +668,19 @@ def main(page: ft.Page):
             ft.Row([btn_expense, btn_income], alignment="center", spacing=10)
         ]))
 
+        # [MODIFIED] Removed budget_container from list
         main_pane = ft.Container(expand=True, padding=10, content=ft.Column([
-            summary_section, budget_container, cards_row, ft.Divider(color="transparent"),
+            summary_section, 
+            cards_row, 
+            ft.Divider(color="transparent"),
             ft.Row([txt_heading_recent, ft.OutlinedButton("Chart", icon="bar_chart", on_click=open_top10_dialog)], alignment="spaceBetween"),
             trans_list_view
         ]))
         
         sidebar.content.controls[0].controls.insert(2, ft.IconButton(icon="smartphone", tooltip="Compact Mode", icon_size=20, on_click=lambda _: switch_view("simple")))
         return ft.Row([main_pane, sidebar], expand=True)
-
-    def build_simple_view():
-        header = ft.Container(content=ft.Row([txt_simple_date, btn_to_full], alignment="spaceBetween", vertical_alignment="center"), padding=ft.padding.only(top=10, bottom=15))
-        body = ft.Container(content=simple_list_view, expand=True, bgcolor=COLOR_SURFACE, border_radius=15, padding=10)
-        footer = ft.Container(content=ft.Row([btn_simple_inc, btn_simple_exp], spacing=10, alignment="center"), padding=ft.padding.only(top=10, bottom=5))
-        return ft.Container(content=ft.Column([header, body, footer], spacing=0), padding=5, expand=True)
-
-    def build_splash_view():
-        global splash_icon
-        splash_icon = ft.Icon("account_balance_wallet", size=80, color=COLOR_PRIMARY, scale=0, animate_scale=ft.Animation(800, "elasticOut"))
-        return ft.Container(content=ft.Column([splash_icon, ft.ProgressRing(width=25, height=25, stroke_width=3, color=COLOR_PRIMARY)], alignment="center", horizontal_alignment="center", spacing=30), alignment=ft.alignment.center, expand=True)
-
+        
+        
     # ///////////////////////////////////////////////////////////////
     # [SECTION 10] APP FLOW & STARTUP
     # ///////////////////////////////////////////////////////////////
