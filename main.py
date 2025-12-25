@@ -88,7 +88,7 @@ def main(page: ft.Page):
         try: page.open(ft.SnackBar(content=ft.Text(msg), bgcolor=color))
         except: pass
     
-    # ///////////////////////////////////////////////////////////////
+# ///////////////////////////////////////////////////////////////
     # [SECTION 4] UI INITIALIZATION (STATIC WIDGETS)
     # ///////////////////////////////////////////////////////////////
     btn_settings = ft.IconButton("settings", icon_size=20)
@@ -101,12 +101,27 @@ def main(page: ft.Page):
     txt_summary_header = ft.Text(T("overview"), color="grey")
     
     summary_row = ft.Row([card_inc, card_exp, card_bal], spacing=10)
-    summary_section = ft.Container(content=ft.Column([txt_summary_header, summary_row], spacing=10), padding=15, border=ft.border.all(1, "#333333"), border_radius=15, margin=ft.margin.only(bottom=10))
+
+    # --- [MODIFIED] Budget Widgets moved here ---
+    txt_budget_title = ft.Text(T("budget"), color="grey", size=12)
+    txt_budget_value = ft.Text("- / -", color="white", size=12)
+    pb_budget = ft.ProgressBar(value=0, color=COLOR_PRIMARY, bgcolor=COLOR_SURFACE, height=6, border_radius=3)
     
-    txt_budget_title = ft.Text(T("budget"), color="grey")
-    txt_budget_value = ft.Text("- / -", color="white")
-    pb_budget = ft.ProgressBar(value=0, color=COLOR_PRIMARY, bgcolor=COLOR_SURFACE, height=8)
-    budget_container = ft.Container(content=ft.Column([ft.Row([txt_budget_title, txt_budget_value], alignment="spaceBetween"), pb_budget], spacing=5), padding=ft.padding.symmetric(vertical=10))
+    # --- [MODIFIED] Summary Section (Included Budget) ---
+    summary_section = ft.Container(
+        content=ft.Column([
+            txt_summary_header, 
+            summary_row,
+            ft.Container(height=10), # Spacer
+            ft.Divider(height=1, color="transparent"),
+            ft.Row([txt_budget_title, txt_budget_value], alignment="spaceBetween"),
+            pb_budget
+        ], spacing=10), 
+        padding=20, 
+        border=ft.border.all(1, "#333333"), 
+        border_radius=15, 
+        margin=ft.margin.only(bottom=10)
+    )
     
     txt_heading_recent = ft.Text("Recent")
     txt_heading_rec = ft.Text("Recurring")
@@ -135,6 +150,7 @@ def main(page: ft.Page):
     
     btn_to_full = ft.IconButton(icon="dashboard", icon_color="white24", icon_size=24, on_click=lambda _: switch_view("full"))
     txt_simple_date = ft.Text("Date", size=28, weight="bold", color="white")
+
     
 # ///////////////////////////////////////////////////////////////
     # [SECTION 5] CORE LOGIC (REFRESH & UPDATE)
