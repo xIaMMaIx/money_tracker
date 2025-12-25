@@ -52,7 +52,7 @@ def main(page: ft.Page):
     
     page.bgcolor = COLOR_BG
     page.padding = 0
-    page.title = f"Money Tracker v5.8.1 - {start_mode.upper()}" 
+    page.title = f"Money Tracker v1.0.0 - {start_mode.upper()}" 
     page.theme_mode = ft.ThemeMode.DARK
     page.theme = ft.Theme(
         font_family=config.get("font_family", "Kanit"),
