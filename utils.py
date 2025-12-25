@@ -194,9 +194,10 @@ def parse_thai_money(text):
     return total_amount, item_text
 
 def load_config():
+    # [MODIFIED] Changed default font to "Prompt" and weight to 400
     default = {
         "db_path": DEFAULT_DB_NAME, "width": 400, "height": 700, "lang": "th", 
-        "font_family": "Kanit", "font_size": 14, "font_weight": 600,
+        "font_family": "Prompt", "font_size": 14, "font_weight": 400,
         "cloud_key": "", "cloud_sheet": "", "startup_mode": "simple"
     }
     if os.path.exists(CONFIG_FILE):
