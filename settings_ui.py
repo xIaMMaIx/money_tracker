@@ -350,10 +350,10 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
                 def show_err():
                     def close_err(e): page.close(dlg_err); page.open(dlg); page.update()
                     page.close(dlg)
+                    # [MODIFIED] Removed print(e)
                     dlg_err = ft.AlertDialog(title=ft.Text("Error"), content=ft.Text(str(e)), actions=[ft.TextButton("OK", on_click=close_err)], on_dismiss=close_err)
                     page.open(dlg_err); page.update()
                 
-                print(e)
                 show_err()
                 txt_cloud_status.value = f"{T('msg_error')}"
                 txt_cloud_status.color = "red"

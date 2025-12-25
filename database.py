@@ -39,7 +39,7 @@ class DatabaseManager:
         try:
             cursor.execute("SELECT payment_id FROM recurring_expenses LIMIT 1")
         except sqlite3.OperationalError:
-            print("Migrating: Adding columns to recurring_expenses...")
+            # [MODIFIED] Removed print("Migrating: Adding columns...")
             cursor.execute("ALTER TABLE recurring_expenses ADD COLUMN payment_id INTEGER DEFAULT NULL")
             cursor.execute("ALTER TABLE recurring_expenses ADD COLUMN auto_pay INTEGER DEFAULT 0")
         
@@ -146,7 +146,6 @@ class DatabaseManager:
         rows = self.conn.execute(query, (month_str,)).fetchall()
         return {int(r[0]) for r in rows}
 
-    # [MODIFIED] Added force_id support
     def add_recurring(self, day, item, amount, category, payment_id=None, auto_pay=0, force_id=None):
         if force_id:
             self.conn.execute("INSERT OR REPLACE INTO recurring_expenses (id, day, item, amount, category, payment_id, auto_pay) VALUES (?,?,?,?,?,?,?)", (force_id, day, item, amount, category, payment_id, auto_pay))
@@ -161,7 +160,6 @@ class DatabaseManager:
         self.conn.execute("DELETE FROM recurring_expenses WHERE id=?", (rid,))
         self.conn.commit()
         
-    # [NEW] Clear all recurring
     def clear_all_recurring(self):
         self.conn.execute("DELETE FROM recurring_expenses")
         self.conn.commit()
@@ -185,7 +183,6 @@ class DatabaseManager:
         if t_type: return self.conn.execute("SELECT id, name, type, keywords FROM categories WHERE type=?", (t_type,)).fetchall()
         return self.conn.execute("SELECT id, name, type, keywords FROM categories").fetchall()
 
-    # [MODIFIED] Added force_id support
     def add_category(self, name, t_type, keywords, force_id=None):
         if force_id:
             self.conn.execute("INSERT OR REPLACE INTO categories (id, name, type, keywords) VALUES (?,?,?,?)", (force_id, name, t_type, keywords))
@@ -205,7 +202,6 @@ class DatabaseManager:
         self.conn.commit()
         return True 
         
-    # [NEW] Clear all categories
     def clear_all_categories(self):
         self.conn.execute("DELETE FROM categories")
         self.conn.commit()

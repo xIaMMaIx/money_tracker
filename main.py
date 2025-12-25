@@ -112,7 +112,6 @@ def main(page: ft.Page):
     
     btn_reset_filter = ft.OutlinedButton("Reset Filter", icon="refresh")
     
-    # [TRANSLATED BUTTONS]
     btn_expense = ft.FloatingActionButton(text=T("expense"), icon="mic", bgcolor=COLOR_BTN_EXPENSE, width=130)
     btn_income = ft.FloatingActionButton(text=T("income"), icon="mic", bgcolor=COLOR_BTN_INCOME, width=130)
     
@@ -130,7 +129,6 @@ def main(page: ft.Page):
     cal = CalendarWidget(page, on_date_change, current_font_delta, current_font_weight_str)
     btn_reset_filter.on_click = lambda e: [cal.reset()]
 
-    # [SIMPLE MODE BUTTONS WITH DARKER COLORS]
     btn_simple_exp = ft.Container(content=ft.Row([ft.Icon("mic", size=24, color="white"), ft.Text(T("expense"), size=16, weight="bold", color="white")], alignment="center", spacing=5), bgcolor=COLOR_BTN_EXPENSE, border_radius=15, height=60, expand=True, ink=True, on_click=lambda e: start_listen(e, "expense"))
     btn_simple_inc = ft.Container(content=ft.Row([ft.Icon("mic", size=24, color="white"), ft.Text(T("income"), size=16, weight="bold", color="white")], alignment="center", spacing=5), bgcolor=COLOR_BTN_INCOME, border_radius=15, height=60, expand=True, ink=True, on_click=lambda e: start_listen(e, "income"))
     
@@ -179,7 +177,6 @@ def main(page: ft.Page):
         
         btn_reset_filter.text = T("reset_filter"); card_inc.txt_title.value = T("income"); card_exp.txt_title.value = T("expense"); card_bal.txt_title.value = T("balance"); 
         
-        # [UPDATE BUTTON TEXTS]
         btn_expense.text = T("expense")
         btn_income.text = T("income")
         btn_simple_exp.content.controls[1].value = T("expense")
@@ -188,7 +185,6 @@ def main(page: ft.Page):
         
         page.update()
 
-    # [NEW FUNCTION] แยก Logic Auto Pay ออกมาทำงานก่อนโหลด UI
     def process_auto_pay():
         recs = current_db.get_recurring()
         if not recs: return
@@ -196,7 +192,6 @@ def main(page: ft.Page):
         check_month = f"{cal.year}-{cal.month:02d}"
         real_now = datetime.now()
         
-        # ทำงานเฉพาะเมื่อดูเดือนปัจจุบันจริงๆ เท่านั้น
         is_real_current_month = (cal.year == real_now.year and cal.month == real_now.month)
         if not is_real_current_month: return
         
@@ -209,22 +204,16 @@ def main(page: ft.Page):
                 rid, day, item_name, amt, cat = r[:5]
                 pid, auto = None, 0
             
-            # เงื่อนไข Auto Pay: เปิด Auto + ถึงวันกำหนด + ยังไม่จ่าย
             if auto == 1 and day <= current_day_val:
                 if not current_db.is_recurring_paid_v2(item_name, amt, cat, check_month, pid):
-                    # เรียกจ่ายเงินแบบ suppress_refresh=True (ไม่รีเฟรชซ้ำ)
                     pay_recurring(item_name, amt, cat, day, check_month, pid, is_auto=True, suppress_refresh=True)
 
     def refresh_ui(new_id=None):
         if not current_db: return
         
-        # 1. เช็คและจ่ายเงินอัตโนมัติก่อน (ถ้ามี)
         process_auto_pay()
-        
-        # 2. อัปเดตหน้าจอตามปกติ (ข้อมูลจะถูกดึงใหม่หลังจ่ายเงินแล้ว)
         update_all_labels()
         
-        # [LOGIC] Disable/Enable Buttons
         now = datetime.now()
         is_current_month = (cal.year == now.year and cal.month == now.month)
         is_date_selected = (current_filter_date is not None)
@@ -235,7 +224,6 @@ def main(page: ft.Page):
         
         btn_expense.bgcolor = bg_exp; btn_income.bgcolor = bg_inc
         btn_simple_exp.bgcolor = bg_exp; btn_simple_inc.bgcolor = bg_inc
-        # -------------------------------------------------------------
 
         current_db.check_and_rollover(cal.year, cal.month)
         current_month_str = f"{cal.year}-{cal.month:02d}"
@@ -310,9 +298,6 @@ def main(page: ft.Page):
                     simple_list_view.controls.append(card)
             page.update()
 
-# [SECTION 5] ในไฟล์ main.py
-    # แก้ไขเฉพาะฟังก์ชัน update_recurring_list
-
     def update_recurring_list():
         d_font_delta, d_font_weight = get_font_specs()
         recurring_list_view.controls.clear()
@@ -322,7 +307,6 @@ def main(page: ft.Page):
             recurring_list_view.controls.append(ft.Text(T("no_items"), color="grey", size=12+d_font_delta))
             return
 
-        # [ADDED] ดึงข้อมูลบัตรทั้งหมดมาสร้าง Map (ID -> {name, color}) เพื่อใช้ดึงสีได้เร็วๆ
         cards_db = current_db.get_cards()
         card_map = {c[0]: {'name': c[1], 'color': c[4]} for c in cards_db}
 
@@ -358,7 +342,6 @@ def main(page: ft.Page):
             
             meta_info = [ft.Text(format_currency(amt), size=12+d_font_delta, color=COLOR_EXPENSE)]
             
-            # แสดงชื่อบัตร (ถ้ามี)
             if pid and pid in card_map:
                 c_name = card_map[pid]['name']
                 meta_info.append(ft.Container(
@@ -373,13 +356,10 @@ def main(page: ft.Page):
 
             day_container = ft.Container(content=ft.Text(f"{day:02d}", color=day_col, size=14+d_font_delta, weight="bold"), bgcolor=day_bg, width=50, alignment=ft.alignment.center, padding=0, margin=0)
             
-            # [MODIFIED] Logic ปุ่มกดจ่าย / Auto Badge
             if auto == 1 and pid:
-                # กรณี Auto Pay + มีบัตร
                 if is_paid:
                     btn = ft.ElevatedButton(T("paid"), disabled=True, height=25)
                 else:
-                    # [NEW] ดึงสีบัตรมาใช้กับปุ่ม Auto
                     c_color = card_map[pid]['color'] if pid in card_map else "yellow"
                     
                     btn = ft.Container(
@@ -390,7 +370,6 @@ def main(page: ft.Page):
                         tooltip="Waiting for auto-pay date"
                     )
             else:
-                # กรณีจ่ายเอง
                 btn = ft.ElevatedButton(T("paid"), disabled=True, height=25) if is_paid else ft.ElevatedButton(T("pay"), style=ft.ButtonStyle(bgcolor=COLOR_PRIMARY, color="white"), height=25, on_click=lambda e, i=item_name, a=amt, c=cat, d=day, cm=check_month, p=pid: pay_recurring(i,a,c,d,cm,p))
             
             row_content = ft.Row([
@@ -446,33 +425,23 @@ def main(page: ft.Page):
         def cancel(e): dlg.open = False; page.update()
         dlg = ft.AlertDialog(title=ft.Text(T("edit")), content=ft.Column([f_item, f_amt, f_cat, f_payment], tight=True), actions=[ft.TextButton(T("save"), on_click=save), ft.TextButton(T("cancel"), on_click=cancel)]); page.open(dlg)
 
-    # ฟังก์ชัน 1: สำหรับจ่ายค่าบัตรเครดิต (Payment)
-# [SECTION 6] ในไฟล์ main.py
-    # แก้ไขเฉพาะฟังก์ชัน open_pay_card_dialog
-
     def open_pay_card_dialog(card_data):
         cid, name, limit, _, _ = card_data
         current_usage = current_db.get_card_usage(cid)
         
-        # -------------------------------------------------------
-        # [MODIFIED] Logic: กำหนดวันที่จ่ายเงินตามปฏิทินที่เลือก
-        # -------------------------------------------------------
         target_date = datetime.now()
         display_date_str = "Today"
         
         if current_filter_date:
             try:
-                # แปลงวันที่ที่เลือกจากปฏิทิน (String) เป็น DateTime Object
                 sel_dt = datetime.strptime(current_filter_date, "%Y-%m-%d")
-                # รวมกับเวลาปัจจุบัน (เพื่อให้รายการเรียงลำดับได้ถูกต้องตามเวลาที่บันทึก)
                 target_date = datetime.combine(sel_dt.date(), datetime.now().time())
                 display_date_str = sel_dt.strftime("%d/%m/%Y")
             except:
                 pass
-        # -------------------------------------------------------
 
         txt_info = ft.Text(f"Current Debt: {format_currency(current_usage)}")
-        txt_date_info = ft.Text(f"Payment Date: {display_date_str}", size=12, color="grey") # แสดงวันที่ให้ user เห็น
+        txt_date_info = ft.Text(f"Payment Date: {display_date_str}", size=12, color="grey")
 
         f_amt = ft.TextField(
             label="Payment Amount", 
@@ -487,7 +456,6 @@ def main(page: ft.Page):
             except: safe_show_snack("Invalid Amount", "red"); return
             
             if amt > 0: 
-                # ส่ง target_date เข้าไปบันทึก
                 current_db.add_transaction("repayment", f"Pay Card: {name}", amt, "Transfer/Debt", target_date, payment_id=cid)
                 
                 dlg_pay.open = False
@@ -506,19 +474,15 @@ def main(page: ft.Page):
         page.open(dlg_pay)
         
 
-    # ฟังก์ชัน 2: สำหรับดูประวัติการใช้บัตร (History)
-
     def open_card_history_dialog(card_data):
         cid, name, _, _, _ = card_data
         month_str = f"{cal.year}-{cal.month:02d}"
         
         rows = current_db.get_card_transactions(cid, month_str)
         
-        # 1. ใช้ ListView หรือ Column แบบ scroll ได้
         lv = ft.Column(spacing=5, scroll=ft.ScrollMode.AUTO, expand=True) 
         total_spent = 0.0
         
-        # ส่วนหัว (Header)
         header_row = ft.Container(
             content=ft.Row([
                 ft.Text(T("day"), size=12, color="grey", width=40),
@@ -533,31 +497,38 @@ def main(page: ft.Page):
              lv.controls.append(ft.Container(content=ft.Text(T("no_items"), color="grey", italic=True), alignment=ft.alignment.center, padding=20))
         else:
             for i, r in enumerate(rows):
+                r_type = r[1]
                 r_item = r[2]
                 r_amt = r[3]
                 r_date = parse_db_date(r[5]).strftime("%d/%m")
-                total_spent += r_amt
                 
-                # 2. ปรับ Style ให้เหมือน Top 10 (เป็นกล่องสี่เหลี่ยมมนๆ สีพื้นหลังต่างจาก Dialog นิดหน่อย)
+                # Logic: สีเขียวสำหรับ repayment, สีแดงสำหรับ expense
+                # Total Spent รวมเฉพาะ expense
+                
+                item_color = COLOR_EXPENSE
+                if r_type == "repayment":
+                    item_color = COLOR_INCOME # สีเขียว
+                else:
+                    total_spent += r_amt # นับรวมยอดใช้จ่ายเฉพาะที่ไม่ใช่การคืนเงิน
+                
                 item_row = ft.Container(
                     content=ft.Row([
                         ft.Text(r_date, size=12, color="white54", width=40),
                         ft.Text(r_item, size=14, expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
-                        ft.Text(format_currency(r_amt), size=14, color=COLOR_EXPENSE, weight="bold", width=80, text_align=ft.TextAlign.RIGHT)
+                        ft.Text(format_currency(r_amt), size=14, color=item_color, weight="bold", width=80, text_align=ft.TextAlign.RIGHT)
                     ], alignment="spaceBetween"),
                     padding=ft.padding.symmetric(horizontal=10, vertical=10),
-                    bgcolor=COLOR_SURFACE, # ใช้สีเดียวกับ Item ของ Top 10
+                    bgcolor=COLOR_SURFACE, 
                     border_radius=5
                 )
                 lv.controls.append(item_row)
 
-        txt_total = ft.Text(f"Total: {format_currency(total_spent)}", size=16, weight="bold", color=COLOR_EXPENSE)
+        txt_total = ft.Text(f"Total Spent: {format_currency(total_spent)}", size=16, weight="bold", color=COLOR_EXPENSE)
         
         def close_dlg(e):
             dlg_hist.open = False
             page.update()
 
-        # จัด Layout ทั้งหมด
         content_col = ft.Column([
             header_row,
             lv, 
@@ -567,16 +538,10 @@ def main(page: ft.Page):
 
         dlg_hist = ft.AlertDialog(
             title=ft.Row([ft.Icon("credit_card", size=24, color=COLOR_PRIMARY), ft.Text(f"{name} ({month_str})")], spacing=10),
-            # 3. กำหนดขนาดให้เท่ากับ Top 10 Popup เป๊ะๆ (400x400)
             content=ft.Container(content=content_col, width=400, height=400, padding=0),
             actions=[ft.TextButton(T("close"), on_click=close_dlg)]
         )
         page.open(dlg_hist)
-
-# [SECTION 6] (เฉพาะ 2 ฟังก์ชันนี้)
-
-# [SECTION 6] ในไฟล์ main.py
-    # แก้ไขเฉพาะฟังก์ชัน open_add_rec
 
     def open_add_rec(e):
         f_item = ft.TextField(label=T("item"))
@@ -588,33 +553,25 @@ def main(page: ft.Page):
         f_day = ft.Dropdown(label=T("day"), options=[ft.dropdown.Option(str(i)) for i in range(1,32)], value="1")
         f_cat = ft.Dropdown(label=T("category"), options=[ft.dropdown.Option(c[1]) for c in current_db.get_categories("expense")], value="อาหาร")
         
-        # Payment Method Selection
         cards = current_db.get_cards()
         pay_opts = [ft.dropdown.Option("cash", "เงินสด / Cash")]
         for c in cards:
             pay_opts.append(ft.dropdown.Option(str(c[0]), f"บัตร: {c[1]}"))
         
-        # [MODIFIED] Auto Pay Switch: เริ่มต้นให้ Disable ไว้ก่อน (เพราะ default เป็น cash)
         sw_auto = ft.Switch(label="Auto Pay (ตัดอัตโนมัติเมื่อถึงวัน)", value=False, disabled=True)
 
-        # [ADDED] Logic: เปิด/ปิด Switch ตามการเลือกบัตร
         def on_payment_change(e):
             is_card = (f_payment.value != "cash")
-            
-            # ถ้าเป็นบัตร ให้กดได้ (disabled = False), ถ้าไม่ใช่บัตร ให้กดไม่ได้ (disabled = True)
             sw_auto.disabled = not is_card
-            
-            # ถ้าเปลี่ยนกลับมาเป็นเงินสด ให้ยกเลิก Auto Pay ทันที
             if not is_card:
                 sw_auto.value = False
-            
             sw_auto.update()
 
         f_payment = ft.Dropdown(
             label=T("payment_method"), 
             options=pay_opts, 
             value="cash",
-            on_change=on_payment_change # ผูกฟังก์ชันตรวจสอบที่นี่
+            on_change=on_payment_change
         )
 
         def add(e):
@@ -645,9 +602,6 @@ def main(page: ft.Page):
         )
         page.open(dlg)
         
-# [SECTION 6] ในไฟล์ main.py 
-    # แก้ไขเฉพาะฟังก์ชัน pay_recurring
-
     def pay_recurring(item, amt, cat, day, check_month, payment_id=None, is_auto=False, suppress_refresh=False):
         try: 
             y, m = map(int, check_month.split('-'))
@@ -662,7 +616,6 @@ def main(page: ft.Page):
         else:
             safe_show_snack(f"Paid: {item} ({check_month})", "green")
             
-        # ถ้าสั่งระงับ (True) จะไม่รีเฟรชหน้าจอ (ใช้สำหรับ Auto Pay ที่ทำเป็นลูป)
         if not suppress_refresh:
             refresh_ui()
             
@@ -687,16 +640,12 @@ def main(page: ft.Page):
     def open_settings(e):
         open_settings_dialog(page, current_db, config, refresh_ui, init_application, cloud_mgr)
 
-    # [FIX: BIND SETTINGS BUTTON]
     btn_settings.on_click = open_settings
 
 # ///////////////////////////////////////////////////////////////
     # [SECTION 8] VOICE SYSTEM
     # ///////////////////////////////////////////////////////////////
     def start_listen(e, t_type):
-        # -------------------------------------------------------
-        # [CHECK CONDITION]
-        # -------------------------------------------------------
         now = datetime.now()
         is_current_month = (cal.year == now.year and cal.month == now.month)
         is_date_selected = (current_filter_date is not None)
@@ -710,7 +659,6 @@ def main(page: ft.Page):
         display_date = "Today"
         d_font_delta, _ = get_font_specs()
         
-        # Determine target date
         if current_view_mode == "full" and current_filter_date:
             try: 
                 sel_dt = datetime.strptime(current_filter_date, "%Y-%m-%d")
@@ -740,14 +688,12 @@ def main(page: ft.Page):
             try: page.close(dlg_listen)
             except: pass
             
-            # [DEBUG LOG 2] ดูผลลัพธ์หลังจากคำนวณเสร็จ
+            # [MODIFIED] Removed [DEBUG] print
             amt_val, item_text = parse_thai_money(text)
-            print(f"[DEBUG] Parsed Result -> Amount: {amt_val}, Item: '{item_text}'")
             
             cats = current_db.get_categories(t_type)
             cards = current_db.get_cards()
             
-            # 1. Category Matching
             default_cat_obj = next((c for c in cats if c[1] == "อื่นๆ"), None)
             cat_val = default_cat_obj[1] if default_cat_obj else (cats[0][1] if cats else "Other")
             best_match_len = 0
@@ -760,7 +706,6 @@ def main(page: ft.Page):
                         if k_clean and k_clean in item_text:
                             if len(k_clean) > best_match_len: best_match_len = len(k_clean); cat_val = name
             
-            # 2. Card Matching
             detected_card_id = "cash"
             sorted_cards = sorted(cards, key=lambda x: len(x[1]), reverse=True)
             if t_type != "income":
@@ -771,7 +716,6 @@ def main(page: ft.Page):
                         item_text = pattern.sub("", item_text).strip()
                         break
             
-            # 3. Fallback Amount (เผื่อ parse_thai_money พลาดจริงๆ)
             if amt_val == 0.0:
                  clean = text.replace(",", "")
                  nums = re.findall(r"[-+]?\d*\.\d+|\d+", clean)
@@ -780,7 +724,6 @@ def main(page: ft.Page):
             if amt_val == 0.0: 
                 safe_show_snack("Could not detect amount, please enter manually.", "orange")
 
-            # --- Auto Save Logic ---
             auto_save_cancelled = False
             btn_save = None
             
@@ -834,7 +777,6 @@ def main(page: ft.Page):
             try: delay = int(current_db.get_setting("auto_save_delay", "0"))
             except: delay = 0
 
-            # Direct Save
             if is_auto and delay == 0 and amt_val > 0:
                 confirm(None)
             else:
@@ -896,19 +838,15 @@ def main(page: ft.Page):
                     try: 
                         text_res = r.recognize_google(sr.AudioData(b''.join(frames), 44100, 2), language="th")
                         
-                        # ------------------------------------------------------------------
-                        # [DEBUG LOG 1] ดูสิ่งที่ Google ส่งกลับมา (Raw Text)
-                        # ------------------------------------------------------------------
-                        print(f"\n[DEBUG] Google Raw: '{text_res}'")
+                        # [MODIFIED] Removed [DEBUG] print for raw text
                         safe_show_snack(f"Raw: {text_res}", "blue") 
-                        # ------------------------------------------------------------------
 
                         process_result(text_res)
                     except sr.UnknownValueError: safe_show_snack("Could not understand audio", "red")
                     except Exception as e: safe_show_snack(f"Error: {e}", "red")
                 else: safe_show_snack("No speech detected", "orange")
             except Exception as e: 
-                print(f"Error: {e}")
+                # [MODIFIED] Removed print(e)
                 try: page.close(dlg_listen)
                 except: pass
 

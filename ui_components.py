@@ -84,7 +84,8 @@ class CalendarWidget(ft.Column):
         self.header_text = ft.Text(weight=font_weight)
         self.header_btn = ft.Container(content=self.header_text, padding=5, border_radius=5, ink=True, on_click=lambda e: self.page_ref.open(self.date_picker))
         self.grid = ft.Column(spacing=0)
-        self.date_picker = ft.DatePicker(on_change=self.on_date_picked, on_dismiss=lambda e: print("Dismissed"), first_date=datetime(2000, 1, 1), last_date=datetime(2100, 12, 31))
+        # [MODIFIED] Removed print("Dismissed")
+        self.date_picker = ft.DatePicker(on_change=self.on_date_picked, on_dismiss=None, first_date=datetime(2000, 1, 1), last_date=datetime(2100, 12, 31))
         self.page_ref.overlay.append(self.date_picker)
         self.controls = [ft.Row([ft.IconButton("chevron_left", on_click=lambda e: self.nav(-1)), self.header_btn, ft.IconButton("chevron_right", on_click=lambda e: self.nav(1))], alignment="spaceBetween"), ft.Row([ft.Container(content=ft.Text(d, color="grey"), width=28, alignment=ft.alignment.center) for d in ["Mo","Tu","We","Th","Fr","Sa","Su"]], alignment="spaceBetween"), self.grid]
         self.update_style(font_delta, font_weight)
@@ -158,7 +159,6 @@ class CreditCardWidget(ft.Container):
         self.cid, self.name, self.limit, self.closing_day, self.color = card_data
         self.onEdit = onEdit; self.onDelete = onDelete; self.usage = usage; self.limit = float(self.limit)
         
-        # [FIX] Clamp percent between 0.0 and 1.0 using max(0.0, ...)
         raw_percent = self.usage / self.limit if self.limit > 0 else 0
         percent = max(0.0, min(raw_percent, 1.0))
         
@@ -172,22 +172,17 @@ class CreditCardWidget(ft.Container):
         ], spacing=2)
         self.bgcolor = self.color if self.color else "#424242"; self.padding = 15; self.border_radius = 12; self.height = 130; self.shadow = ft.BoxShadow(blur_radius=10, color="#4D000000", offset=ft.Offset(2, 4))
 
-# [ไฟล์ ui_components.py]
-# แก้ไขเฉพาะ Class MiniCardWidget
-
 class MiniCardWidget(ft.Container):
     def __init__(self, card_data, onPay, onShowHistory, usage=0.0, col=None):
         super().__init__(col=col)
         self.cid, self.name, self.limit, self.closing_day, self.color = card_data
         self.usage = usage; self.limit = float(self.limit)
         
-        # Calculate Percent
         raw_percent = self.usage / self.limit if self.limit > 0 else 0
         percent = max(0.0, min(raw_percent, 1.0))
         
         prog_color = "white" if percent <= 0.5 else ("#FFAB40" if percent <= 0.8 else "#FF5252")
         
-        # ส่วนชื่อบัตร (กดเพื่อดูประวัติได้)
         name_widget = ft.Container(
             content=ft.Row([
                 ft.Icon("credit_card", size=16, color="white70"), 
@@ -202,7 +197,6 @@ class MiniCardWidget(ft.Container):
 
         pay_btn = ft.Container(content=ft.Icon("payment", size=14, color="white70"), padding=5, border_radius=5, bgcolor="white10", ink=True, on_click=lambda e: onPay(card_data), tooltip=f"Pay {self.name}")
 
-        # [MODIFIED] เปลี่ยนการแสดงผลเป็น "ยอดใช้ / วงเงิน"
         display_text = f"{format_currency(self.usage)} / {format_currency(self.limit)}"
 
         self.content = ft.Column([
