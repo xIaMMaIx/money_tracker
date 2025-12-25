@@ -1,5 +1,5 @@
 # GUI Framework
-flet
+flet==0.28.3
 
 # Voice Recognition & Audio Processing
 SpeechRecognition

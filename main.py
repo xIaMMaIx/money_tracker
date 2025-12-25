@@ -311,7 +311,7 @@ def main(page: ft.Page):
                     simple_list_view.controls.append(card)
             page.update()
 
-    # [SECTION 5] ในไฟล์ main.py
+# [SECTION 5] ในไฟล์ main.py
     # แก้ไขเฉพาะฟังก์ชัน update_recurring_list
 
     def update_recurring_list():
@@ -506,6 +506,7 @@ def main(page: ft.Page):
         )
         page.open(dlg_pay)
         
+
     # ฟังก์ชัน 2: สำหรับดูประวัติการใช้บัตร (History)
 
     def open_card_history_dialog(card_data):
@@ -571,8 +572,10 @@ def main(page: ft.Page):
             content=ft.Container(content=content_col, width=400, height=400, padding=0),
             actions=[ft.TextButton(T("close"), on_click=close_dlg)]
         )
-        page.open(dlg_hist)        
-        
+        page.open(dlg_hist)
+
+# [SECTION 6] (เฉพาะ 2 ฟังก์ชันนี้)
+
 # [SECTION 6] ในไฟล์ main.py
     # แก้ไขเฉพาะฟังก์ชัน open_add_rec
 
@@ -642,7 +645,9 @@ def main(page: ft.Page):
             actions=[ft.TextButton("Add", on_click=add), ft.TextButton("Cancel", on_click=cancel)]
         )
         page.open(dlg)
-
+        
+# [SECTION 6] ในไฟล์ main.py 
+    # แก้ไขเฉพาะฟังก์ชัน pay_recurring
 
     def pay_recurring(item, amt, cat, day, check_month, payment_id=None, is_auto=False, suppress_refresh=False):
         try: 
@@ -661,6 +666,7 @@ def main(page: ft.Page):
         # ถ้าสั่งระงับ (True) จะไม่รีเฟรชหน้าจอ (ใช้สำหรับ Auto Pay ที่ทำเป็นลูป)
         if not suppress_refresh:
             refresh_ui()
+            
     def open_top10_dialog(e):
         month_str = f"{cal.year}-{cal.month:02d}"
         d_font_delta, d_font_weight = get_font_specs()
@@ -674,7 +680,6 @@ def main(page: ft.Page):
             return lv
         tabs = ft.Tabs(selected_index=0, tabs=[ft.Tab(text="Expense", content=ft.Container(content=get_list_view("expense"), padding=10)), ft.Tab(text="Income", content=ft.Container(content=get_list_view("income"), padding=10))])
         dlg = ft.AlertDialog(title=ft.Text(f"{T('top_chart')} ({month_str})"), content=ft.Container(content=tabs, width=400, height=400), actions=[ft.TextButton("Close", on_click=lambda e: [setattr(dlg, 'open', False), page.update()])])
-        page.open(dlg)
         page.open(dlg)
 
     # ///////////////////////////////////////////////////////////////
@@ -830,13 +835,6 @@ def main(page: ft.Page):
             try: delay = int(current_db.get_setting("auto_save_delay", "0"))
             except: delay = 0
 
-            # [SAFETY ADD-ON] ระบบกันพลาด
-            # ถ้า Google ฟังผิด ยอดเงินอาจจะเพี้ยน หรือถ้ายอดเยอะเกินไป ให้เราดูตาเปล่าก่อนเซฟ
-            # เงื่อนไข: ถ้ายอดเกิน 5,000 (หรือยอดที่เรากลัวพลาด) ให้บังคับเปิดหน้าต่างยืนยันเสมอ
-            if amt_val >= 5000:
-                is_auto = False 
-                safe_show_snack("Large amount detected - Auto Save disabled for safety", "orange")
-                
             # Direct Save
             if is_auto and delay == 0 and amt_val > 0:
                 confirm(None)
