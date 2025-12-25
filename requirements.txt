@@ -1,0 +1,14 @@
+# GUI Framework
+flet
+
+# Voice Recognition & Audio Processing
+SpeechRecognition
+pyaudio
+
+# Natural Language Processing (Thai Number Parsing)
+pythainlp
+requests
+
+# Cloud Sync (Optional - ถ้าใช้งาน Google Sheets)
+gspread
+oauth2client
