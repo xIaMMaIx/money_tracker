@@ -177,29 +177,42 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
 
         for i, row in enumerate(items):
             cid, name, ctype, keywords = row[:4] 
-            # row[4] is sort_order, we use 'i' as implicit order here
-
-            card_content = ft.Container(
-                content=ft.Row([
-                    ft.Row([
-                        # [MODIFIED] Use string "drag_handle" instead of ft.icons.DRAG_HANDLE
-                        ft.Icon(name="drag_handle", color="grey", size=20, tooltip="Drag to reorder"),
-                        ft.Text(name, size=16, weight="bold")
-                    ], spacing=10),
-                    # [MODIFIED] Use string "edit" instead of ft.icons.EDIT
-                    ft.IconButton(icon="edit", icon_size=18, icon_color=COLOR_PRIMARY, on_click=lambda e, data=(cid, name, keywords): render_cat_edit(data))
-                ], alignment="spaceBetween"),
-                bgcolor=COLOR_SURFACE,
-                padding=10,
-                border_radius=8,
-                border=ft.border.all(1, "#333333"),
-                width=450
-            )
+            
+            # [Function ช่วยสร้างการ์ด]
+            def create_card(opacity=1.0, shadow=None):
+                return ft.Container(
+                    content=ft.Row([
+                        ft.Row([
+                            ft.Icon(name="drag_indicator", color="grey", size=20, tooltip="Drag to reorder"),
+                            ft.Text(
+                                name, 
+                                size=16, 
+                                weight="bold",
+                                font_family=dd_font.value, 
+                                style=ft.TextStyle(decoration=ft.TextDecoration.NONE)
+                            )
+                        ], spacing=10),
+                        ft.IconButton(icon="edit", icon_size=18, icon_color=COLOR_PRIMARY, on_click=lambda e, data=(cid, name, keywords): render_cat_edit(data))
+                    ], alignment="spaceBetween"),
+                    bgcolor=COLOR_SURFACE,
+                    padding=10,
+                    border_radius=8,
+                    border=ft.border.all(1, "#333333"),
+                    width=450,
+                    opacity=opacity,
+                    shadow=shadow
+                )
 
             draggable = ft.Draggable(
                 group="cats",
-                content=card_content,
-                content_when_dragging=ft.Container(content=card_content, opacity=0.5),
+                content=create_card(opacity=1.0),
+                content_when_dragging=create_card(opacity=0.5),
+                content_feedback=ft.Card(
+                    content=create_card(opacity=1.0),
+                    elevation=0,
+                    margin=0,
+                    color="transparent"
+                ),
                 data=i
             )
 
@@ -225,7 +238,7 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15)
         
         if cat_content_container.page: cat_content_container.update()
-
+        
     def render_cat_edit(data=None):
         is_edit = data is not None; cid = data[0] if is_edit else None
         txt_title = ft.Text(T("edit_category") if is_edit else T("add_category"), size=20, weight="bold")
