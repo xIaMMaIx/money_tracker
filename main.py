@@ -88,7 +88,7 @@ def main(page: ft.Page):
         try: page.open(ft.SnackBar(content=ft.Text(msg), bgcolor=color))
         except: pass
     
-# ///////////////////////////////////////////////////////////////
+    # ///////////////////////////////////////////////////////////////
     # [SECTION 4] UI INITIALIZATION (STATIC WIDGETS)
     # ///////////////////////////////////////////////////////////////
     btn_settings = ft.IconButton("settings", icon_size=20)
@@ -102,21 +102,22 @@ def main(page: ft.Page):
     
     summary_row = ft.Row([card_inc, card_exp, card_bal], spacing=10)
 
-    # --- [MODIFIED] Budget Widgets moved here ---
+    # --- Budget Widgets ---
     txt_budget_title = ft.Text(T("budget"), color="grey", size=12)
     txt_budget_value = ft.Text("- / -", color="white", size=12)
     pb_budget = ft.ProgressBar(value=0, color=COLOR_PRIMARY, bgcolor=COLOR_SURFACE, height=6, border_radius=3)
     
-    # --- [MODIFIED] Summary Section (Included Budget) ---
+    # --- [MODIFIED] Summary Section (Tighter Layout) ---
     summary_section = ft.Container(
         content=ft.Column([
             txt_summary_header, 
             summary_row,
-            ft.Container(height=10), # Spacer
-            ft.Divider(height=1, color="transparent"),
+            # [MODIFIED] Removed large spacer, used thin divider instead
+            ft.Container(height=5), # เว้นระยะนิดหน่อยให้น่ามอง
+            ft.Divider(height=1, color="white10"), # เส้นคั่นบางๆ
             ft.Row([txt_budget_title, txt_budget_value], alignment="spaceBetween"),
             pb_budget
-        ], spacing=10), 
+        ], spacing=8), # [MODIFIED] Reduced spacing from 10 to 8
         padding=20, 
         border=ft.border.all(1, "#333333"), 
         border_radius=15, 
@@ -440,7 +441,7 @@ def main(page: ft.Page):
 
     btn_settings.on_click = open_settings
 
-# ///////////////////////////////////////////////////////////////
+    # ///////////////////////////////////////////////////////////////
     # [SECTION 8] VOICE SYSTEM
     # ///////////////////////////////////////////////////////////////
     def start_listen(e, t_type):
@@ -653,7 +654,6 @@ def main(page: ft.Page):
     btn_expense.on_click = lambda e: start_listen(e, "expense")
     btn_income.on_click = lambda e: start_listen(e, "income")
     
-    
 # ///////////////////////////////////////////////////////////////
     # [SECTION 9] VIEW BUILDERS
     # ///////////////////////////////////////////////////////////////
@@ -668,7 +668,7 @@ def main(page: ft.Page):
             ft.Row([btn_expense, btn_income], alignment="center", spacing=10)
         ]))
 
-        # [MODIFIED] Removed budget_container from list
+        # [MODIFIED] Budget status is now inside summary_section, so we removed budget_container here
         main_pane = ft.Container(expand=True, padding=10, content=ft.Column([
             summary_section, 
             cards_row, 
@@ -679,7 +679,17 @@ def main(page: ft.Page):
         
         sidebar.content.controls[0].controls.insert(2, ft.IconButton(icon="smartphone", tooltip="Compact Mode", icon_size=20, on_click=lambda _: switch_view("simple")))
         return ft.Row([main_pane, sidebar], expand=True)
-        
+
+    def build_simple_view():
+        header = ft.Container(content=ft.Row([txt_simple_date, btn_to_full], alignment="spaceBetween", vertical_alignment="center"), padding=ft.padding.only(top=10, bottom=15))
+        body = ft.Container(content=simple_list_view, expand=True, bgcolor=COLOR_SURFACE, border_radius=15, padding=10)
+        footer = ft.Container(content=ft.Row([btn_simple_inc, btn_simple_exp], spacing=10, alignment="center"), padding=ft.padding.only(top=10, bottom=5))
+        return ft.Container(content=ft.Column([header, body, footer], spacing=0), padding=5, expand=True)
+
+    def build_splash_view():
+        global splash_icon
+        splash_icon = ft.Icon("account_balance_wallet", size=80, color=COLOR_PRIMARY, scale=0, animate_scale=ft.Animation(800, "elasticOut"))
+        return ft.Container(content=ft.Column([splash_icon, ft.ProgressRing(width=25, height=25, stroke_width=3, color=COLOR_PRIMARY)], alignment="center", horizontal_alignment="center", spacing=30), alignment=ft.alignment.center, expand=True)
         
     # ///////////////////////////////////////////////////////////////
     # [SECTION 10] APP FLOW & STARTUP
