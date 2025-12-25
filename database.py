@@ -18,7 +18,8 @@ class DatabaseManager:
     def create_tables(self):
         cursor = self.conn.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS transactions (id INTEGER PRIMARY KEY, type TEXT, item TEXT, amount REAL, category TEXT, date TIMESTAMP, payment_id INTEGER)''')
-        cursor.execute('''CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY, name TEXT, type TEXT, keywords TEXT)''')
+        # [MODIFIED] Added sort_order column
+        cursor.execute('''CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY, name TEXT, type TEXT, keywords TEXT, sort_order INTEGER DEFAULT 0)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS recurring_expenses (id INTEGER PRIMARY KEY, day INTEGER, item TEXT, amount REAL, category TEXT, payment_id INTEGER, auto_pay INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS credit_cards (id INTEGER PRIMARY KEY, name TEXT, limit_amt REAL, closing_day INTEGER, color TEXT)''')
@@ -42,20 +43,31 @@ class DatabaseManager:
             # [MODIFIED] Removed print("Migrating: Adding columns...")
             cursor.execute("ALTER TABLE recurring_expenses ADD COLUMN payment_id INTEGER DEFAULT NULL")
             cursor.execute("ALTER TABLE recurring_expenses ADD COLUMN auto_pay INTEGER DEFAULT 0")
+            
+        # [NEW] Migration 3: Category Sort Order
+        try:
+            cursor.execute("SELECT sort_order FROM categories LIMIT 1")
+        except sqlite3.OperationalError:
+            print("Migrating: Adding sort_order to categories...")
+            cursor.execute("ALTER TABLE categories ADD COLUMN sort_order INTEGER DEFAULT 0")
+            # Initialize sort_order based on current ID order
+            rows = cursor.execute("SELECT id FROM categories ORDER BY id").fetchall()
+            for index, (cid,) in enumerate(rows):
+                cursor.execute("UPDATE categories SET sort_order=? WHERE id=?", (index, cid))
         
         self.conn.commit()
 
     def add_defaults(self, cursor):
         defaults = [
-            ("อาหาร", "expense", "ข้าว,ก๋วยเตี๋ยว"), 
-            ("เดินทาง", "expense", "รถเมล์,bts"), 
-            ("เงินเดือน", "income", "salary"), 
-            ("ช้อปปิ้ง", "expense", "shop"), 
-            ("อื่นๆ", "expense", "other"), 
-            ("อื่นๆ", "income", "other")
+            ("อาหาร", "expense", "ข้าว,ก๋วยเตี๋ยว", 0), 
+            ("เดินทาง", "expense", "รถเมล์,bts", 1), 
+            ("เงินเดือน", "income", "salary", 0), 
+            ("ช้อปปิ้ง", "expense", "shop", 2), 
+            ("อื่นๆ", "expense", "other", 3), 
+            ("อื่นๆ", "income", "other", 1)
         ]
-        for n, t, k in defaults:
-            cursor.execute("INSERT INTO categories (name, type, keywords) VALUES (?,?,?)", (n, t, k))
+        for n, t, k, s in defaults:
+            cursor.execute("INSERT INTO categories (name, type, keywords, sort_order) VALUES (?,?,?,?)", (n, t, k, s))
 
     def add_transaction(self, t_type, item, amount, category, date=None, payment_id=None):
         if not date: date = datetime.now()
@@ -180,14 +192,26 @@ class DatabaseManager:
         return c > 0
 
     def get_categories(self, t_type=None):
-        if t_type: return self.conn.execute("SELECT id, name, type, keywords FROM categories WHERE type=?", (t_type,)).fetchall()
-        return self.conn.execute("SELECT id, name, type, keywords FROM categories").fetchall()
+        # [MODIFIED] Order by sort_order
+        if t_type: return self.conn.execute("SELECT id, name, type, keywords, sort_order FROM categories WHERE type=? ORDER BY sort_order ASC, id ASC", (t_type,)).fetchall()
+        return self.conn.execute("SELECT id, name, type, keywords, sort_order FROM categories ORDER BY sort_order ASC, id ASC").fetchall()
 
-    def add_category(self, name, t_type, keywords, force_id=None):
+    def add_category(self, name, t_type, keywords, force_id=None, sort_order=None):
+        # [MODIFIED] Handle sort_order auto-increment
+        if sort_order is None:
+            max_order = self.conn.execute("SELECT MAX(sort_order) FROM categories WHERE type=?", (t_type,)).fetchone()[0]
+            sort_order = (max_order + 1) if max_order is not None else 0
+
         if force_id:
-            self.conn.execute("INSERT OR REPLACE INTO categories (id, name, type, keywords) VALUES (?,?,?,?)", (force_id, name, t_type, keywords))
+            self.conn.execute("INSERT OR REPLACE INTO categories (id, name, type, keywords, sort_order) VALUES (?,?,?,?,?)", (force_id, name, t_type, keywords, sort_order))
         else:
-            self.conn.execute("INSERT INTO categories (name, type, keywords) VALUES (?,?,?)", (name, t_type, keywords))
+            self.conn.execute("INSERT INTO categories (name, type, keywords, sort_order) VALUES (?,?,?,?)", (name, t_type, keywords, sort_order))
+        self.conn.commit()
+
+    # [NEW] Update multiple categories order
+    def update_category_orders(self, ordered_ids):
+        for index, cid in enumerate(ordered_ids):
+            self.conn.execute("UPDATE categories SET sort_order=? WHERE id=?", (index, cid))
         self.conn.commit()
 
     def update_category(self, cid, name, keywords):

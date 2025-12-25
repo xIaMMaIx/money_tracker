@@ -107,17 +107,16 @@ def main(page: ft.Page):
     txt_budget_value = ft.Text("- / -", color="white", size=12)
     pb_budget = ft.ProgressBar(value=0, color=COLOR_PRIMARY, bgcolor=COLOR_SURFACE, height=6, border_radius=3)
     
-    # --- [MODIFIED] Summary Section (Tighter Layout) ---
+    # --- [MODIFIED] Summary Section (Even Tighter Layout) ---
     summary_section = ft.Container(
         content=ft.Column([
             txt_summary_header, 
             summary_row,
-            # [MODIFIED] Removed large spacer, used thin divider instead
-            ft.Container(height=5), # เว้นระยะนิดหน่อยให้น่ามอง
-            ft.Divider(height=1, color="white10"), # เส้นคั่นบางๆ
+            # [MODIFIED] Removed spacer, kept only thin divider
+            ft.Divider(height=1, color="white10"), 
             ft.Row([txt_budget_title, txt_budget_value], alignment="spaceBetween"),
             pb_budget
-        ], spacing=8), # [MODIFIED] Reduced spacing from 10 to 8
+        ], spacing=5), # [MODIFIED] Reduced spacing to 5
         padding=20, 
         border=ft.border.all(1, "#333333"), 
         border_radius=15, 
@@ -654,7 +653,7 @@ def main(page: ft.Page):
     btn_expense.on_click = lambda e: start_listen(e, "expense")
     btn_income.on_click = lambda e: start_listen(e, "income")
     
-# ///////////////////////////////////////////////////////////////
+    # ///////////////////////////////////////////////////////////////
     # [SECTION 9] VIEW BUILDERS
     # ///////////////////////////////////////////////////////////////
     def build_full_view():
