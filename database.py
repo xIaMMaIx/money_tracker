@@ -135,7 +135,6 @@ class DatabaseManager:
     def get_month_balance(self, year, month):
         month_str = f"{year}-{month:02d}"
         query = "SELECT SUM(CASE WHEN type='income' THEN amount ELSE -amount END) FROM transactions WHERE type IN ('income', 'expense') AND payment_id IS NULL AND strftime('%Y-%m', date) = ?"
-        # [FIXED] Changed fetchall() to fetchone() to get a single row
         res = self.conn.execute(query, (month_str,)).fetchone()
         return res[0] if res and res[0] else 0.0
 
@@ -147,8 +146,12 @@ class DatabaseManager:
         rows = self.conn.execute(query, (month_str,)).fetchall()
         return {int(r[0]) for r in rows}
 
-    def add_recurring(self, day, item, amount, category, payment_id=None, auto_pay=0):
-        self.conn.execute("INSERT INTO recurring_expenses (day, item, amount, category, payment_id, auto_pay) VALUES (?,?,?,?,?,?)", (day, item, amount, category, payment_id, auto_pay))
+    # [MODIFIED] Added force_id support
+    def add_recurring(self, day, item, amount, category, payment_id=None, auto_pay=0, force_id=None):
+        if force_id:
+            self.conn.execute("INSERT OR REPLACE INTO recurring_expenses (id, day, item, amount, category, payment_id, auto_pay) VALUES (?,?,?,?,?,?,?)", (force_id, day, item, amount, category, payment_id, auto_pay))
+        else:
+            self.conn.execute("INSERT INTO recurring_expenses (day, item, amount, category, payment_id, auto_pay) VALUES (?,?,?,?,?,?)", (day, item, amount, category, payment_id, auto_pay))
         self.conn.commit()
 
     def get_recurring(self):
@@ -156,6 +159,11 @@ class DatabaseManager:
 
     def delete_recurring(self, rid):
         self.conn.execute("DELETE FROM recurring_expenses WHERE id=?", (rid,))
+        self.conn.commit()
+        
+    # [NEW] Clear all recurring
+    def clear_all_recurring(self):
+        self.conn.execute("DELETE FROM recurring_expenses")
         self.conn.commit()
 
     def is_recurring_paid(self, item, amount, category, month_str):
@@ -177,8 +185,12 @@ class DatabaseManager:
         if t_type: return self.conn.execute("SELECT id, name, type, keywords FROM categories WHERE type=?", (t_type,)).fetchall()
         return self.conn.execute("SELECT id, name, type, keywords FROM categories").fetchall()
 
-    def add_category(self, name, t_type, keywords):
-        self.conn.execute("INSERT INTO categories (name, type, keywords) VALUES (?,?,?)", (name, t_type, keywords))
+    # [MODIFIED] Added force_id support
+    def add_category(self, name, t_type, keywords, force_id=None):
+        if force_id:
+            self.conn.execute("INSERT OR REPLACE INTO categories (id, name, type, keywords) VALUES (?,?,?,?)", (force_id, name, t_type, keywords))
+        else:
+            self.conn.execute("INSERT INTO categories (name, type, keywords) VALUES (?,?,?)", (name, t_type, keywords))
         self.conn.commit()
 
     def update_category(self, cid, name, keywords):
@@ -192,6 +204,11 @@ class DatabaseManager:
         self.conn.execute("DELETE FROM categories WHERE id=?", (cid,))
         self.conn.commit()
         return True 
+        
+    # [NEW] Clear all categories
+    def clear_all_categories(self):
+        self.conn.execute("DELETE FROM categories")
+        self.conn.commit()
 
     def add_card(self, name, limit, closing_day, color, force_id=None):
         if force_id:

@@ -25,7 +25,6 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
     # ///////////////////////////////////////////////////////////////
     
     # --- Budget & Auto Save ---
-    # [FIX: INPUT FILTER] Prevent non-numeric input
     f_budget = ft.TextField(
         label=T("budget"), 
         value=current_db.get_setting("budget", "10000"),
@@ -44,7 +43,6 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
     # --- Appearance (Font/Mode) ---
     curr_mode = config.get("startup_mode", "simple")
     
-    # [FIX: SEGMENTED BUTTON] Use SegmentedButton instead of Dropdown
     mode_seg = ft.SegmentedButton(
         selected={curr_mode},
         segments=[
@@ -113,7 +111,6 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
         page.close(dlg); is_edit = data is not None; c_id = data[0] if is_edit else None
         f_name = ft.TextField(label="Card Name", value=data[1] if is_edit else "")
         
-        # [FIX: INPUT FILTER]
         f_limit = ft.TextField(
             label="Limit Amount", 
             value=str(data[2]) if is_edit else "", 
@@ -193,56 +190,176 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
         page.close(dlg); page.open(dlg_conf_sync)
 
     def run_cloud_task(task_type):
-        if not HAS_GSPREAD: txt_cloud_status.value = T("msg_lib_missing"); txt_cloud_status.color = "red"; page.update(); return
-        txt_cloud_status.value = T("msg_processing"); txt_cloud_status.color = "blue"; page.update()
+        if not HAS_GSPREAD: 
+            txt_cloud_status.value = T("msg_lib_missing")
+            txt_cloud_status.color = "red"
+            page.update()
+            return
+            
+        txt_cloud_status.value = T("msg_processing")
+        txt_cloud_status.color = "blue"
+        page.update()
+        
         def thread_target():
             try:
+                # 1. Connect Google Sheet
                 wb = cloud_mgr.connect(f_cloud_key.value, f_sheet_name.value)
-                try: ws_trans = wb.sheet1
-                except: ws_trans = wb.add_worksheet(title="Sheet1", rows="1000", cols="7")
-                try: ws_cards = wb.worksheet("Cards")
-                except: ws_cards = wb.add_worksheet(title="Cards", rows="100", cols="5")
                 
-                if task_type == "check": pass
-                elif task_type == "compare":
-                    t_count = len(ws_trans.get_all_values()) - 1; c_count = len(ws_cards.get_all_values()) - 1; local_t = len(current_db.get_transactions()); local_c = len(current_db.get_cards())
-                    txt_cloud_status.value = f"Done."; txt_cloud_status.color = "green"
-                    def show_res():
-                        msg = f"Trans: {local_t} (Local) vs {t_count} (Cloud)\nCards: {local_c} (Local) vs {c_count} (Cloud)"
-                        def close_res(e): page.close(dlg_res); page.open(dlg)
-                        dlg_res = ft.AlertDialog(title=ft.Text("Compare Result"), content=ft.Text(msg), actions=[ft.TextButton("OK", on_click=close_res)]); page.close(dlg); page.open(dlg_res); page.update()
-                    show_res(); return
+                # 2. Prepare Worksheets (Create if not exists)
+                def get_or_create_sheet(title, rows="100", cols="10"):
+                    try: return wb.worksheet(title)
+                    except: return wb.add_worksheet(title=title, rows=rows, cols=cols)
+
+                ws_trans = wb.sheet1 # Default sheet (Transactions)
+                ws_cards = get_or_create_sheet("Cards")
+                ws_cats = get_or_create_sheet("Categories")
+                ws_rec = get_or_create_sheet("Recurring")
+                
+                # ---------------------------------------------------------
+                # CASE 1: CHECK CONNECTION
+                # ---------------------------------------------------------
+                if task_type == "check": 
+                    pass # Just connect is enough
+
+                # ---------------------------------------------------------
+                # CASE 2: PUSH (Local -> Cloud)
+                # ---------------------------------------------------------
                 elif task_type == "push":
-                    trans = current_db.get_transactions(); data_t = [["ID", "Type", "Item", "Amount", "Category", "Date", "PaymentID"]]
+                    # A. Transactions
+                    trans = current_db.get_transactions()
+                    data_t = [["ID", "Type", "Item", "Amount", "Category", "Date", "PaymentID"]]
                     for t in trans: data_t.append([str(x) for x in t])
-                    ws_trans.clear(); ws_trans.update(range_name='A1', values=data_t)
-                    cards = current_db.get_cards(); data_c = [["ID", "Name", "Limit", "ClosingDay", "Color"]]
+                    ws_trans.clear()
+                    ws_trans.update(range_name='A1', values=data_t)
+
+                    # B. Credit Cards
+                    cards = current_db.get_cards()
+                    data_c = [["ID", "Name", "Limit", "ClosingDay", "Color"]]
                     for c in cards: data_c.append([str(x) for x in c])
-                    ws_cards.clear(); ws_cards.update(range_name='A1', values=data_c)
+                    ws_cards.clear()
+                    ws_cards.update(range_name='A1', values=data_c)
+                    
+                    # C. Categories
+                    cats = current_db.get_categories() # id, name, type, kw
+                    data_cat = [["ID", "Name", "Type", "Keywords"]]
+                    for c in cats: data_cat.append([str(x) for x in c])
+                    ws_cats.clear()
+                    ws_cats.update(range_name='A1', values=data_cat)
+                    
+                    # D. Recurring
+                    recs = current_db.get_recurring() # id, day, item, amt, cat, pid, auto
+                    data_rec = [["ID", "Day", "Item", "Amount", "Category", "PaymentID", "AutoPay"]]
+                    for r in recs: data_rec.append([str(x) for x in r])
+                    ws_rec.clear()
+                    ws_rec.update(range_name='A1', values=data_rec)
+
+                # ---------------------------------------------------------
+                # CASE 3: PULL (Cloud -> Local)
+                # ---------------------------------------------------------
                 elif task_type == "pull":
-                    all_t = ws_trans.get_all_values(); current_db.clear_all_transactions()
+                    # A. Transactions
+                    all_t = ws_trans.get_all_values()
+                    current_db.clear_all_transactions()
                     if len(all_t) > 1:
                         for row in all_t[1:]:
                             try:
                                 if len(row) < 6: continue
-                                t_type = row[1]; item = row[2]; amt = float(str(row[3]).replace(",", "")); cat = row[4]; dt = row[5]; pid = int(row[6]) if len(row) > 6 and row[6] not in ["None", ""] else None
+                                t_type = row[1]; item = row[2]; 
+                                amt = float(str(row[3]).replace(",", ""))
+                                cat = row[4]; dt = row[5]
+                                pid = int(row[6]) if len(row) > 6 and row[6] not in ["None", ""] else None
                                 current_db.add_transaction(t_type, item, amt, cat, dt, pid)
                             except: pass
-                    all_c = ws_cards.get_all_values(); current_db.clear_all_cards()
+                    
+                    # B. Credit Cards
+                    all_c = ws_cards.get_all_values()
+                    current_db.clear_all_cards()
                     if len(all_c) > 1:
                         for row in all_c[1:]:
                             try:
-                                cid = int(row[0]); name = row[1]; limit = float(row[2]); close_d = int(row[3]); color = row[4]
+                                cid = int(row[0]); name = row[1]; limit = float(row[2])
+                                close_d = int(row[3]); color = row[4]
                                 current_db.add_card(name, limit, close_d, color, force_id=cid)
                             except: pass
+
+                    # C. Categories
+                    all_cat = ws_cats.get_all_values()
+                    if len(all_cat) > 1:
+                        current_db.clear_all_categories()
+                        for row in all_cat[1:]:
+                            try:
+                                # Row format: ID, Name, Type, Keywords
+                                cid = int(row[0])
+                                name = row[1]
+                                c_type = row[2]
+                                kw = row[3] if len(row) > 3 else ""
+                                current_db.add_category(name, c_type, kw, force_id=cid)
+                            except: pass
+
+                    # D. Recurring
+                    all_rec = ws_rec.get_all_values()
+                    if len(all_rec) > 1:
+                        current_db.clear_all_recurring()
+                        for row in all_rec[1:]:
+                            try:
+                                # Row format: ID, Day, Item, Amount, Category, PaymentID, AutoPay
+                                rid = int(row[0])
+                                day = int(row[1])
+                                item = row[2]
+                                amt = float(str(row[3]).replace(",", ""))
+                                cat = row[4]
+                                pid = int(row[5]) if len(row) > 5 and row[5] not in ["None", ""] else None
+                                auto = int(row[6]) if len(row) > 6 and row[6] not in ["None", ""] else 0
+                                current_db.add_recurring(day, item, amt, cat, payment_id=pid, auto_pay=auto, force_id=rid)
+                            except: pass
+                    
                     refresh_ui_callback()
-                txt_cloud_status.value = f"{T('msg_success')} ({task_type.upper()})"; txt_cloud_status.color = "green"
-            except Exception as e: 
+
+                # ---------------------------------------------------------
+                # CASE 4: COMPARE
+                # ---------------------------------------------------------
+                elif task_type == "compare":
+                    def get_count(ws): return len(ws.get_all_values()) - 1
+                    
+                    c_trans = get_count(ws_trans)
+                    c_cards = get_count(ws_cards)
+                    c_cats = get_count(ws_cats)
+                    c_recs = get_count(ws_rec)
+                    
+                    l_trans = len(current_db.get_transactions())
+                    l_cards = len(current_db.get_cards())
+                    l_cats = len(current_db.get_categories())
+                    l_recs = len(current_db.get_recurring())
+                    
+                    msg = (f"Transactions: Local={l_trans} / Cloud={c_trans}\n"
+                           f"Cards: Local={l_cards} / Cloud={c_cards}\n"
+                           f"Categories: Local={l_cats} / Cloud={c_cats}\n"
+                           f"Recurring: Local={l_recs} / Cloud={c_recs}")
+                           
+                    txt_cloud_status.value = "Done."; txt_cloud_status.color = "green"
+                    
+                    def close_res(e): page.close(dlg_res); page.open(dlg)
+                    dlg_res = ft.AlertDialog(title=ft.Text("Compare Result"), content=ft.Text(msg), actions=[ft.TextButton("OK", on_click=close_res)])
+                    page.close(dlg); page.open(dlg_res); page.update()
+                    return
+
+                txt_cloud_status.value = f"{T('msg_success')} ({task_type.upper()})"
+                txt_cloud_status.color = "green"
+                
+            except Exception as e:
                 def show_err():
                     def close_err(e): page.close(dlg_err); page.open(dlg); page.update()
-                    page.close(dlg); dlg_err = ft.AlertDialog(title=ft.Text("Error"), content=ft.Text(str(e)), actions=[ft.TextButton("OK", on_click=close_err)], on_dismiss=close_err); page.open(dlg_err); page.update()
-                show_err(); txt_cloud_status.value = f"{T('msg_error')}"; txt_cloud_status.color = "red"
+                    page.close(dlg)
+                    dlg_err = ft.AlertDialog(title=ft.Text("Error"), content=ft.Text(str(e)), actions=[ft.TextButton("OK", on_click=close_err)], on_dismiss=close_err)
+                    page.open(dlg_err); page.update()
+                
+                print(e)
+                show_err()
+                txt_cloud_status.value = f"{T('msg_error')}"
+                txt_cloud_status.color = "red"
+            
             page.update()
+
         threading.Thread(target=thread_target, daemon=True).start()
 
     btn_check = ft.ElevatedButton(T("btn_check"), bgcolor="#1976D2", color="white", width=400, on_click=lambda _: run_cloud_task("check"))
