@@ -84,7 +84,6 @@ class CalendarWidget(ft.Column):
         self.header_text = ft.Text(weight=font_weight)
         self.header_btn = ft.Container(content=self.header_text, padding=5, border_radius=5, ink=True, on_click=lambda e: self.page_ref.open(self.date_picker))
         self.grid = ft.Column(spacing=0)
-        # [MODIFIED] Removed print("Dismissed")
         self.date_picker = ft.DatePicker(on_change=self.on_date_picked, on_dismiss=None, first_date=datetime(2000, 1, 1), last_date=datetime(2100, 12, 31))
         self.page_ref.overlay.append(self.date_picker)
         self.controls = [ft.Row([ft.IconButton("chevron_left", on_click=lambda e: self.nav(-1)), self.header_btn, ft.IconButton("chevron_right", on_click=lambda e: self.nav(1))], alignment="spaceBetween"), ft.Row([ft.Container(content=ft.Text(d, color="grey"), width=28, alignment=ft.alignment.center) for d in ["Mo","Tu","We","Th","Fr","Sa","Su"]], alignment="spaceBetween"), self.grid]
@@ -197,7 +196,8 @@ class MiniCardWidget(ft.Container):
 
         pay_btn = ft.Container(content=ft.Icon("payment", size=14, color="white70"), padding=5, border_radius=5, bgcolor="white10", ink=True, on_click=lambda e: onPay(card_data), tooltip=f"Pay {self.name}")
 
-        display_text = f"{format_currency(self.usage)} / {format_currency(self.limit)}"
+        # [MODIFIED] เปลี่ยนจาก self.limit เป็น (self.limit - self.usage) เพื่อแสดงวงเงินคงเหลือ
+        display_text = f"{format_currency(self.usage)} / {format_currency(self.limit - self.usage)}"
 
         self.content = ft.Column([
             ft.Row([

@@ -20,7 +20,7 @@ from database import DatabaseManager
 from cloud import CloudManager
 from ui_components import *
 from settings_ui import open_settings_dialog
-import dialogs  # <--- Import ไฟล์ใหม่ที่นี่
+import dialogs
 
 # ///////////////////////////////////////////////////////////////
 # [SECTION 2] GLOBAL VARIABLES
@@ -94,30 +94,35 @@ def main(page: ft.Page):
     btn_settings = ft.IconButton("settings", icon_size=20)
     txt_app_title = ft.Text(T("app_title"), color=COLOR_PRIMARY)
     
-    card_inc = SummaryCard("income", "+0.00", COLOR_INCOME, "arrow_upward", current_font_delta, current_font_weight_str)
-    card_exp = SummaryCard("expense", "-0.00", COLOR_EXPENSE, "arrow_downward", current_font_delta, current_font_weight_str)
-    card_bal = SummaryCard("balance", "0.00", COLOR_PRIMARY, "account_balance_wallet", current_font_delta, current_font_weight_str)
-    
+    # [MODIFIED] ลดขนาดฟอนต์ของการ์ดลงเป็นพิเศษเพื่อให้เรียง 4 ใบได้พอดี
+    summary_font_delta = current_font_delta - 4 
+
+    card_inc = SummaryCard("income", "+0.00", COLOR_INCOME, "arrow_upward", summary_font_delta, current_font_weight_str)
+    card_exp = SummaryCard("expense", "-0.00", COLOR_EXPENSE, "arrow_downward", summary_font_delta, current_font_weight_str)
+    card_bal = SummaryCard("balance", "0.00", COLOR_PRIMARY, "account_balance_wallet", summary_font_delta, current_font_weight_str)
+    card_net = SummaryCard("Net Worth", "0.00", "cyan", "monetization_on", summary_font_delta, current_font_weight_str)
+
     txt_summary_header = ft.Text(T("overview"), color="grey")
     
-    summary_row = ft.Row([card_inc, card_exp, card_bal], spacing=10)
+    # [MODIFIED] กลับมาใช้ Row เดียว 4 ใบ และลด spacing เหลือ 2
+    summary_row = ft.Row([card_inc, card_exp, card_bal, card_net], spacing=2, expand=True)
 
     # --- Budget Widgets ---
     txt_budget_title = ft.Text(T("budget"), color="grey", size=12)
     txt_budget_value = ft.Text("- / -", color="white", size=12)
     pb_budget = ft.ProgressBar(value=0, color=COLOR_PRIMARY, bgcolor=COLOR_SURFACE, height=6, border_radius=3)
     
-    # --- [MODIFIED] Summary Section (Even Tighter Layout) ---
+    # --- Summary Section (Tighter Layout) ---
     summary_section = ft.Container(
         content=ft.Column([
             txt_summary_header, 
-            summary_row,
-            # [MODIFIED] Removed spacer, kept only thin divider
-            ft.Divider(height=1, color="white10"), 
+            summary_row, # ใช้แถวเดียว
+            ft.Container(height=5),
+            ft.Divider(height=1, color="white10"),
             ft.Row([txt_budget_title, txt_budget_value], alignment="spaceBetween"),
             pb_budget
-        ], spacing=5), # [MODIFIED] Reduced spacing to 5
-        padding=20, 
+        ], spacing=8),
+        padding=15, # ลด Padding ลงนิดหน่อย
         border=ft.border.all(1, "#333333"), 
         border_radius=15, 
         margin=ft.margin.only(bottom=10)
@@ -159,6 +164,9 @@ def main(page: ft.Page):
         current_lang = config.get("lang", "th")
         current_font_delta, current_font_weight_str = get_font_specs()
         
+        # [MODIFIED] คำนวณขนาดฟอนต์เล็กสำหรับ Card 4 ใบ
+        summary_font_delta = current_font_delta - 4
+        
         txt_app_title.value = T("app_title")
         txt_app_title.size = 20 + current_font_delta
         txt_app_title.weight = current_font_weight_str
@@ -178,9 +186,12 @@ def main(page: ft.Page):
         txt_heading_rec.size = 14 + current_font_delta
         txt_heading_rec.weight = current_font_weight_str
         
-        card_inc.update_style(current_font_delta, current_font_weight_str)
-        card_exp.update_style(current_font_delta, current_font_weight_str)
-        card_bal.update_style(current_font_delta, current_font_weight_str)
+        # [MODIFIED] ใช้ summary_font_delta
+        card_inc.update_style(summary_font_delta, current_font_weight_str)
+        card_exp.update_style(summary_font_delta, current_font_weight_str)
+        card_bal.update_style(summary_font_delta, current_font_weight_str)
+        card_net.update_style(summary_font_delta, current_font_weight_str)
+
         cal.update_style(current_font_delta, current_font_weight_str)
 
         if current_filter_date:
@@ -191,8 +202,13 @@ def main(page: ft.Page):
         
         txt_simple_date.value = datetime.now().strftime("%d %B %Y")
         
-        btn_reset_filter.text = T("reset_filter"); card_inc.txt_title.value = T("income"); card_exp.txt_title.value = T("expense"); card_bal.txt_title.value = T("balance"); 
+        btn_reset_filter.text = T("reset_filter"); 
+        card_inc.txt_title.value = T("income"); 
+        card_exp.txt_title.value = T("expense"); 
+        card_bal.txt_title.value = T("balance"); 
         
+        card_net.txt_title.value = "Net Worth" if current_lang == "en" else "ความมั่งคั่งสุทธิ"
+
         btn_expense.text = T("expense")
         btn_income.text = T("income")
         btn_simple_exp.content.controls[1].value = T("expense")
@@ -222,7 +238,6 @@ def main(page: ft.Page):
             
             if auto == 1 and day <= current_day_val:
                 if not current_db.is_recurring_paid_v2(item_name, amt, cat, check_month, pid):
-                    # เรียกใช้ pay_recurring_action จาก dialogs.py แทน
                     dialogs.pay_recurring_action(page, current_db, refresh_ui, item_name, amt, cat, day, check_month, pid, is_auto=True, suppress_refresh=True)
 
     def refresh_ui(new_id=None):
@@ -249,7 +264,21 @@ def main(page: ft.Page):
         txt_summary_header.value = f"{T('overview')} ({month_name})"
         
         inc, exp, bal = current_db.get_summary(current_month_str)
-        card_inc.txt_value.value = f"+{format_currency(inc)}"; card_exp.txt_value.value = f"-{format_currency(exp)}"; card_bal.txt_value.value = f"{format_currency(bal)}"
+        
+        total_debt = 0.0
+        try:
+            total_debt = current_db.get_total_debt()
+        except AttributeError:
+            pass
+            
+        net_worth = bal - total_debt
+
+        card_inc.txt_value.value = f"+{format_currency(inc)}"
+        card_exp.txt_value.value = f"-{format_currency(exp)}"
+        card_bal.txt_value.value = f"{format_currency(bal)}"
+        
+        card_net.txt_value.value = f"{format_currency(net_worth)}"
+        card_net.txt_value.color = COLOR_INCOME if net_worth >= 0 else COLOR_EXPENSE
         
         try: limit = float(current_db.get_setting("budget", "10000"))
         except: limit = 10000.0
@@ -264,7 +293,6 @@ def main(page: ft.Page):
             dynamic_col = {"xs": 12, "sm": sm_span, "md": desktop_span}
             for c in cards_db: 
                 usage = current_db.get_card_usage(c[0])
-                # ส่งค่าไปยัง dialogs.open_pay_card_dialog และ dialogs.open_card_history_dialog
                 cards_row.controls.append(MiniCardWidget(
                     c, 
                     lambda d: dialogs.open_pay_card_dialog(page, current_db, config, refresh_ui, d, current_filter_date),
@@ -400,11 +428,9 @@ def main(page: ft.Page):
                         tooltip="Waiting for auto-pay date"
                     )
             else:
-                # เรียก pay_recurring_action จาก dialogs.py
                 pay_func = lambda e, i=item_name, a=amt, c=cat, d=day, cm=check_month, p=pid: dialogs.pay_recurring_action(page, current_db, refresh_ui, i,a,c,d,cm,p)
                 btn = ft.ElevatedButton(T("paid"), disabled=True, height=25) if is_paid else ft.ElevatedButton(T("pay"), style=ft.ButtonStyle(bgcolor=COLOR_PRIMARY, color="white"), height=25, on_click=pay_func)
             
-            # เรียก confirm_delete_rec จาก dialogs.py
             del_func = lambda e, id=rid: dialogs.confirm_delete_rec(page, current_db, config, refresh_ui, id)
 
             row_content = ft.Row([
@@ -486,7 +512,6 @@ def main(page: ft.Page):
             try: page.close(dlg_listen)
             except: pass
             
-            # [MODIFIED] Removed [DEBUG] print
             amt_val, item_text = parse_thai_money(text)
             
             cats = current_db.get_categories(t_type)
@@ -635,16 +660,12 @@ def main(page: ft.Page):
                     r = sr.Recognizer()
                     try: 
                         text_res = r.recognize_google(sr.AudioData(b''.join(frames), 44100, 2), language="th")
-                        
-                        # [MODIFIED] Removed [DEBUG] print for raw text
                         safe_show_snack(f"Raw: {text_res}", "blue") 
-
                         process_result(text_res)
                     except sr.UnknownValueError: safe_show_snack("Could not understand audio", "red")
                     except Exception as e: safe_show_snack(f"Error: {e}", "red")
                 else: safe_show_snack("No speech detected", "orange")
             except Exception as e: 
-                # [MODIFIED] Removed print(e)
                 try: page.close(dlg_listen)
                 except: pass
 
@@ -653,7 +674,7 @@ def main(page: ft.Page):
     btn_expense.on_click = lambda e: start_listen(e, "expense")
     btn_income.on_click = lambda e: start_listen(e, "income")
     
-    # ///////////////////////////////////////////////////////////////
+# ///////////////////////////////////////////////////////////////
     # [SECTION 9] VIEW BUILDERS
     # ///////////////////////////////////////////////////////////////
     def build_full_view():
@@ -667,7 +688,6 @@ def main(page: ft.Page):
             ft.Row([btn_expense, btn_income], alignment="center", spacing=10)
         ]))
 
-        # [MODIFIED] Budget status is now inside summary_section, so we removed budget_container here
         main_pane = ft.Container(expand=True, padding=10, content=ft.Column([
             summary_section, 
             cards_row, 

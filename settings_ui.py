@@ -144,101 +144,20 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
         dlg_conf = ft.AlertDialog(title=ft.Text(T("confirm_delete")), content=ft.Text("Delete this card?"), actions=[ft.TextButton(T("delete"), on_click=yes), ft.TextButton(T("cancel"), on_click=no)]); page.open(dlg_conf)
 
     # ///////////////////////////////////////////////////////////////
-    # [SECTION: CATEGORIES TAB LOGIC] (DRAG & DROP)
+    # [SECTION: CATEGORIES TAB LOGIC]
     # ///////////////////////////////////////////////////////////////
-    cat_content_container = ft.Container()
-    cat_list_col = ft.Column(spacing=5, scroll=ft.ScrollMode.AUTO, height=400)
-    cat_state = {"type": "expense"}
-
+    cat_content_container = ft.Container(); cat_state = {"type": "expense"}
     def render_cat_grid():
-        # items: [(id, name, type, kw, sort_order), ...]
-        items = current_db.get_categories(cat_state["type"])
-        
-        cat_list_col.controls.clear()
-        
-        def drop_accept(e):
-            src_id = e.src_id
-            draggable = page.get_control(src_id)
-            from_index = draggable.data
-            to_index = e.control.data
-            
-            if from_index == to_index: return
-
-            # Swap in memory list
-            moved_item = items.pop(from_index)
-            items.insert(to_index, moved_item)
-            
-            # Update DB with new order
-            new_order_ids = [item[0] for item in items]
-            current_db.update_category_orders(new_order_ids)
-            
-            # Re-render UI
-            render_cat_grid()
-
-        for i, row in enumerate(items):
-            cid, name, ctype, keywords = row[:4] 
-            
-            # [Function ช่วยสร้างการ์ด]
-            def create_card(opacity=1.0, shadow=None):
-                return ft.Container(
-                    content=ft.Row([
-                        ft.Row([
-                            ft.Icon(name="drag_indicator", color="grey", size=20, tooltip="Drag to reorder"),
-                            ft.Text(
-                                name, 
-                                size=16, 
-                                weight="bold",
-                                font_family=dd_font.value, 
-                                style=ft.TextStyle(decoration=ft.TextDecoration.NONE)
-                            )
-                        ], spacing=10),
-                        ft.IconButton(icon="edit", icon_size=18, icon_color=COLOR_PRIMARY, on_click=lambda e, data=(cid, name, keywords): render_cat_edit(data))
-                    ], alignment="spaceBetween"),
-                    bgcolor=COLOR_SURFACE,
-                    padding=10,
-                    border_radius=8,
-                    border=ft.border.all(1, "#333333"),
-                    width=450,
-                    opacity=opacity,
-                    shadow=shadow
-                )
-
-            draggable = ft.Draggable(
-                group="cats",
-                content=create_card(opacity=1.0),
-                content_when_dragging=create_card(opacity=0.5),
-                content_feedback=ft.Card(
-                    content=create_card(opacity=1.0),
-                    elevation=0,
-                    margin=0,
-                    color="transparent"
-                ),
-                data=i
-            )
-
-            drag_target = ft.DragTarget(
-                group="cats",
-                content=draggable,
-                on_accept=drop_accept,
-                data=i
-            )
-            
-            cat_list_col.controls.append(drag_target)
-
+        cat_list = current_db.get_categories(cat_state["type"])
         def on_type_change(e):
             if e.control.selected: cat_state["type"] = list(e.control.selected)[0]; render_cat_grid()
-            
         type_seg = ft.SegmentedButton(selected={cat_state["type"]}, segments=[ft.Segment("expense", label=ft.Text(T("expense"))), ft.Segment("income", label=ft.Text(T("income")))], on_change=on_type_change)
-        btn_add = ft.ElevatedButton(T("add_category"), bgcolor=COLOR_PRIMARY, color="white", width=450, on_click=lambda _: render_cat_edit())
-        
-        cat_content_container.content = ft.Column([
-            ft.Container(content=type_seg, alignment=ft.alignment.center), 
-            btn_add, 
-            cat_list_col
-        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15)
-        
+        btn_add = ft.ElevatedButton(T("add_category"), bgcolor=COLOR_PRIMARY, color="white", width=400, on_click=lambda _: render_cat_edit())
+        grid_controls = []
+        for cid, name, ctype, keywords in cat_list: grid_controls.append(ft.ElevatedButton(text=name, bgcolor=COLOR_BUTTON_GREY, color="white", width=120, height=50, on_click=lambda e, data=(cid, name, keywords): render_cat_edit(data)))
+        cat_content_container.content = ft.Column([ft.Container(content=type_seg, alignment=ft.alignment.center), btn_add, ft.Row(grid_controls, wrap=True, spacing=10, run_spacing=10, alignment=ft.MainAxisAlignment.CENTER)], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=20)
         if cat_content_container.page: cat_content_container.update()
-        
+
     def render_cat_edit(data=None):
         is_edit = data is not None; cid = data[0] if is_edit else None
         txt_title = ft.Text(T("edit_category") if is_edit else T("add_category"), size=20, weight="bold")
@@ -320,9 +239,9 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
                     ws_cards.clear()
                     ws_cards.update(range_name='A1', values=data_c)
                     
-                    # C. Categories [MODIFIED]
-                    cats = current_db.get_categories() # id, name, type, kw, sort
-                    data_cat = [["ID", "Name", "Type", "Keywords", "SortOrder"]]
+                    # C. Categories
+                    cats = current_db.get_categories() # id, name, type, kw
+                    data_cat = [["ID", "Name", "Type", "Keywords"]]
                     for c in cats: data_cat.append([str(x) for x in c])
                     ws_cats.clear()
                     ws_cats.update(range_name='A1', values=data_cat)
@@ -363,20 +282,18 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
                                 current_db.add_card(name, limit, close_d, color, force_id=cid)
                             except: pass
 
-                    # C. Categories [MODIFIED]
+                    # C. Categories
                     all_cat = ws_cats.get_all_values()
                     if len(all_cat) > 1:
                         current_db.clear_all_categories()
                         for row in all_cat[1:]:
                             try:
-                                # Row format: ID, Name, Type, Keywords, SortOrder
+                                # Row format: ID, Name, Type, Keywords
                                 cid = int(row[0])
                                 name = row[1]
                                 c_type = row[2]
                                 kw = row[3] if len(row) > 3 else ""
-                                # Handle new sort order column
-                                s_order = int(row[4]) if len(row) > 4 else 0
-                                current_db.add_category(name, c_type, kw, force_id=cid, sort_order=s_order)
+                                current_db.add_category(name, c_type, kw, force_id=cid)
                             except: pass
 
                     # D. Recurring
