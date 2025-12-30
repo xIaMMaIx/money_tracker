@@ -191,21 +191,39 @@ class MiniCardWidget(ft.Container):
             ink=True,
             border_radius=5,
             padding=ft.padding.symmetric(horizontal=5, vertical=2),
-            expand=True
         )
 
-        pay_btn = ft.Container(content=ft.Icon("payment", size=14, color="white70"), padding=5, border_radius=5, bgcolor="white10", ink=True, on_click=lambda e: onPay(card_data), tooltip=f"Pay {self.name}")
+        pay_btn = ft.Container(
+            content=ft.Icon("payment", size=16, color="white70"), # ขยาย icon นิดหน่อย
+            padding=5, 
+            border_radius=5, 
+            bgcolor="white10", 
+            ink=True, 
+            on_click=lambda e: onPay(card_data), 
+            tooltip=f"Pay {self.name}"
+        )
 
-        # [MODIFIED] เปลี่ยนจาก self.limit เป็น (self.limit - self.usage) เพื่อแสดงวงเงินคงเหลือ
         display_text = f"{format_currency(self.usage)} / {format_currency(self.limit - self.usage)}"
 
         self.content = ft.Column([
+            # [บรรทัดที่ 1] ชื่อบัตร และ ปุ่มจ่ายเงิน
             ft.Row([
                 name_widget, 
-                ft.Text(display_text, size=14, weight="bold", color="white"), 
                 pay_btn
             ], alignment="spaceBetween", vertical_alignment="center"), 
-            ft.ProgressBar(value=percent, color=prog_color, bgcolor="black26", height=3, border_radius=0)
-        ], spacing=8, alignment="spaceBetween")
+            
+            # [บรรทัดที่ 2] ยอดเงิน (ตัวใหญ่ขึ้น)
+            ft.Container(
+                content=ft.Text(display_text, size=16, weight="bold", color="white"),
+                padding=ft.padding.only(left=8, top=2, bottom=2)
+            ),
+
+            # [บรรทัดที่ 3] Progress Bar
+            ft.ProgressBar(value=percent, color=prog_color, bgcolor="black26", height=4, border_radius=2)
+        ], spacing=2, alignment="spaceBetween") # จัดระยะห่างให้พอดี
         
-        self.bgcolor = self.color if self.color else "#424242"; self.padding = ft.padding.only(left=5, right=10, top=10, bottom=0); self.border_radius = 8; self.height = 55; self.shadow = ft.BoxShadow(blur_radius=5, color="#4D000000", offset=ft.Offset(0, 2))
+        self.bgcolor = self.color if self.color else "#424242"
+        self.padding = ft.padding.all(10)
+        self.border_radius = 12
+        self.height = 80 # เพิ่มความสูงเพื่อให้แสดงผลได้ครบ 3 ส่วน
+        self.shadow = ft.BoxShadow(blur_radius=5, color="#4D000000", offset=ft.Offset(0, 2))
