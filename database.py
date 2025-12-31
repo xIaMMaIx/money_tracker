@@ -9,9 +9,12 @@ class DatabaseManager:
         self.conn = None
     
     def connect(self):
-        # Note: check_same_thread=False is used for Flet compatibility, 
-        # but be careful with concurrent writes.
+        # Note: check_same_thread=False is used for Flet compatibility
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        
+        # [เพิ่มบรรทัดนี้] เปิดโหมด WAL เพื่อให้ทำงานพร้อมกันได้โดยไม่ล็อค
+        self.conn.execute("PRAGMA journal_mode=WAL;")
+        
         self.create_tables()
         self.migrate_db()
 
