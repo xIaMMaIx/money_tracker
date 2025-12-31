@@ -156,7 +156,10 @@ def open_card_history_dialog(page, db, config, refresh_cb, card_data, year, mont
     rows = db.get_card_transactions(cid, month_str)
     
     lv = ft.Column(spacing=5, scroll=ft.ScrollMode.AUTO, expand=True) 
+    
+    # 1. Initialize both variables
     total_spent = 0.0
+    total_paid = 0.0
     
     header_row = ft.Container(
         content=ft.Row([
@@ -180,6 +183,8 @@ def open_card_history_dialog(page, db, config, refresh_cb, card_data, year, mont
             item_color = COLOR_EXPENSE
             if r_type == "repayment":
                 item_color = COLOR_INCOME 
+                # 2. Accumulate Repayments
+                total_paid += r_amt
             else:
                 total_spent += r_amt 
             
@@ -195,7 +200,9 @@ def open_card_history_dialog(page, db, config, refresh_cb, card_data, year, mont
             )
             lv.controls.append(item_row)
 
-    txt_total = ft.Text(f"Total Spent: {format_currency(total_spent)}", size=16, weight="bold", color=COLOR_EXPENSE)
+    # 3. Create display widgets for both totals
+    txt_paid = ft.Text(f"Paid: {format_currency(total_paid)}", size=14, weight="bold", color=COLOR_INCOME)
+    txt_spent = ft.Text(f"Spent: {format_currency(total_spent)}", size=14, weight="bold", color=COLOR_EXPENSE)
     
     def close_dlg(e):
         dlg.open = False
@@ -205,7 +212,8 @@ def open_card_history_dialog(page, db, config, refresh_cb, card_data, year, mont
         header_row,
         lv, 
         ft.Divider(height=1, color="grey"), 
-        ft.Row([txt_total], alignment="end")
+        # 4. Display both in the footer Row
+        ft.Row([txt_paid, txt_spent], alignment="spaceBetween")
     ], spacing=10, expand=True)
 
     dlg = ft.AlertDialog(
@@ -214,7 +222,7 @@ def open_card_history_dialog(page, db, config, refresh_cb, card_data, year, mont
         actions=[ft.TextButton(T(config, "close"), on_click=close_dlg)]
     )
     page.open(dlg)
-
+    
 def open_add_rec_dialog(page, db, config, refresh_cb):
     f_item = ft.TextField(label=T(config, "item"))
     f_amt = ft.TextField(

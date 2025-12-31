@@ -41,10 +41,10 @@ def main(page: ft.Page):
     # --- Window Dimensions ---
     if start_mode == "simple":
         target_w, target_h = 400, 600
-        min_w, min_h = 400, 600      # เพิ่มบรรทัดนี้
+        min_w, min_h = 400, 600
     else:
         target_w, target_h = 1000, 800
-        min_w, min_h = 1000, 800     # เพิ่มบรรทัดนี้ (ขนาดขั้นต่ำที่ต้องการ)
+        min_w, min_h = 1000, 800
         
     # --- Initial Window Setup (Hidden) ---
     page.window.visible = False
@@ -98,7 +98,6 @@ def main(page: ft.Page):
     btn_settings = ft.IconButton("settings", icon_size=20)
     txt_app_title = ft.Text(T("app_title"), color=COLOR_PRIMARY)
     
-    # [MODIFIED] ลดขนาดฟอนต์ของการ์ดลงเป็นพิเศษเพื่อให้เรียง 4 ใบได้พอดี
     summary_font_delta = current_font_delta - 4 
 
     card_inc = SummaryCard("income", "+0.00", COLOR_INCOME, "arrow_upward", summary_font_delta, current_font_weight_str)
@@ -108,7 +107,6 @@ def main(page: ft.Page):
 
     txt_summary_header = ft.Text(T("overview"), color="grey")
     
-    # [MODIFIED] กลับมาใช้ Row เดียว 4 ใบ และลด spacing เหลือ 2
     summary_row = ft.Row([card_inc, card_exp, card_bal, card_net], spacing=2, expand=True)
 
     # --- Budget Widgets ---
@@ -120,13 +118,13 @@ def main(page: ft.Page):
     summary_section = ft.Container(
         content=ft.Column([
             txt_summary_header, 
-            summary_row, # ใช้แถวเดียว
+            summary_row, 
             ft.Container(height=5),
             ft.Divider(height=1, color="white10"),
             ft.Row([txt_budget_title, txt_budget_value], alignment="spaceBetween"),
             pb_budget
         ], spacing=8),
-        padding=15, # ลด Padding ลงนิดหน่อย
+        padding=15, 
         border=ft.border.all(1, "#333333"), 
         border_radius=15, 
         margin=ft.margin.only(bottom=10)
@@ -168,7 +166,6 @@ def main(page: ft.Page):
         current_lang = config.get("lang", "th")
         current_font_delta, current_font_weight_str = get_font_specs()
         
-        # [MODIFIED] คำนวณขนาดฟอนต์เล็กสำหรับ Card 4 ใบ
         summary_font_delta = current_font_delta - 4
         
         txt_app_title.value = T("app_title")
@@ -190,7 +187,6 @@ def main(page: ft.Page):
         txt_heading_rec.size = 14 + current_font_delta
         txt_heading_rec.weight = current_font_weight_str
         
-        # [MODIFIED] ใช้ summary_font_delta
         card_inc.update_style(summary_font_delta, current_font_weight_str)
         card_exp.update_style(summary_font_delta, current_font_weight_str)
         card_bal.update_style(summary_font_delta, current_font_weight_str)
@@ -255,6 +251,9 @@ def main(page: ft.Page):
         is_date_selected = (current_filter_date is not None)
         enable_buttons = is_current_month or is_date_selected
         
+        # [MODIFIED] Net Worth ซ่อนเมื่อดูเดือนเก่า
+        card_net.visible = is_current_month
+        
         bg_exp = COLOR_BTN_EXPENSE if enable_buttons else "grey"
         bg_inc = COLOR_BTN_INCOME if enable_buttons else "grey"
         
@@ -269,12 +268,14 @@ def main(page: ft.Page):
         
         inc, exp, bal = current_db.get_summary(current_month_str)
         
+        cards_db = current_db.get_cards()
         total_debt = 0.0
-        try:
-            total_debt = current_db.get_total_debt()
-        except AttributeError:
-            pass
-            
+        
+        # [MODIFIED] คำนวณ Net Worth จากหนี้สะสมจนถึงสิ้นเดือนนั้นๆ
+        if cards_db:
+             for c in cards_db:
+                 total_debt += current_db.get_card_usage(c[0], current_month_str) # ยอดหนี้สะสม
+
         net_worth = bal - total_debt
 
         card_inc.txt_value.value = f"+{format_currency(inc)}"
@@ -289,32 +290,32 @@ def main(page: ft.Page):
         _, mon_exp, _ = current_db.get_summary(current_month_str)
         ratio = mon_exp / limit if limit > 0 else 0; pb_budget.value = min(ratio, 1.0); pb_budget.color = COLOR_PRIMARY if ratio < 0.5 else ("orange" if ratio < 0.8 else COLOR_EXPENSE); txt_budget_value.value = f"{format_currency(mon_exp)} / {format_currency(limit)}"
         
-        cards_db = current_db.get_cards(); cards_row.controls.clear()
+        cards_row.controls.clear()
+        
+        # [MODIFIED] แสดงรายการบัตรทุกเดือน (พร้อมยอดหนี้สะสม ณ เวลานั้น)
         if cards_db:
             count = len(cards_db)
             desktop_span = 12 // min(count, 4) 
             sm_span = 6 if count > 1 else 12 
             dynamic_col = {"xs": 12, "sm": sm_span, "md": desktop_span}
             for c in cards_db: 
-                usage = current_db.get_card_usage(c[0])
+                # [MODIFIED] แสดงยอดหนี้สะสมจนถึงเดือนที่เลือก
+                usage_cumulative = current_db.get_card_usage(c[0], current_month_str)
                 cards_row.controls.append(MiniCardWidget(
                     c, 
                     lambda d: dialogs.open_pay_card_dialog(page, current_db, config, refresh_ui, d, current_filter_date),
                     lambda d: dialogs.open_card_history_dialog(page, current_db, config, refresh_ui, d, cal.year, cal.month),
-                    usage, 
+                    usage_cumulative, 
                     col=dynamic_col
                 ))
             cards_row.visible = True
-        else: cards_row.visible = False
+        else: 
+            cards_row.visible = False
         
-        if current_view_mode == "simple":
-             rows = current_db.get_transactions(None, month_filter=current_month_str)
-        else:
-             rows = current_db.get_transactions(current_filter_date, month_filter=current_month_str)
+        rows = current_db.get_transactions(current_filter_date, month_filter=current_month_str)
         
         d_font_delta, d_font_weight = get_font_specs()
 
-        # Helper สำหรับเรียก Dialog
         def call_delete(tid):
             dialogs.confirm_delete(page, current_db, config, refresh_ui, tid)
         def call_edit(data):
@@ -423,7 +424,6 @@ def main(page: ft.Page):
                     btn = ft.ElevatedButton(T("paid"), disabled=True, height=25)
                 else:
                     c_color = card_map[pid]['color'] if pid in card_map else "yellow"
-                    
                     btn = ft.Container(
                         content=ft.Text("Auto", size=12, color=c_color, weight="bold"),
                         padding=ft.padding.symmetric(horizontal=10, vertical=2),
@@ -449,7 +449,7 @@ def main(page: ft.Page):
             
             card = ft.Container(content=row_content, bgcolor=COLOR_HIGHLIGHT, border_radius=10, padding=0, height=45, clip_behavior=ft.ClipBehavior.HARD_EDGE)
             recurring_list_view.controls.append(card)
-            
+
     # ///////////////////////////////////////////////////////////////
     # [SECTION 6] DIALOG ACTIONS -> MOVED TO dialogs.py
     # ///////////////////////////////////////////////////////////////
@@ -796,6 +796,52 @@ def main(page: ft.Page):
             def create_new(e): dlg.open = False; page.update(); init_application(DEFAULT_DB_NAME)
             dlg.content = ft.Text(f"Could not find: {db_path}"); dlg.actions = [ft.TextButton("Create New", on_click=create_new), ft.TextButton("Browse...", on_click=lambda _: pick_dialog.pick_files(allowed_extensions=["db"]))]; page.open(dlg)
 
+    # -----------------------------------------------------------
+    # [NEW] ระบบ Auto Refresh เมื่อ Database มีการเปลี่ยนแปลง
+    # -----------------------------------------------------------
+    def start_auto_sync():
+        def sync_loop():
+            # หาตำแหน่งไฟล์ DB
+            current_conf = load_config()
+            target_path = current_conf.get("db_path", "modern_money.db")
+            
+            # แปลงเป็น Absolute Path เพื่อความชัวร์
+            if not os.path.isabs(target_path):
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                target_path = os.path.join(base_dir, target_path)
+
+            last_mtime = 0
+            
+            # ตรวจสอบครั้งแรกเพื่อจำเวลาไว้ก่อน
+            if os.path.exists(target_path):
+                last_mtime = os.path.getmtime(target_path)
+
+            while True:
+                time.sleep(2) # เช็คทุกๆ 2 วินาที
+                try:
+                    if os.path.exists(target_path):
+                        # อ่านเวลาแก้ไขล่าสุดของไฟล์ DB
+                        current_mtime = os.path.getmtime(target_path)
+                        
+                        # เช็คไฟล์ WAL ด้วย (ถ้ามี) เพราะ SQLite โหมด WAL เวลาไฟล์หลักอาจไม่เปลี่ยนทันที
+                        wal_path = target_path + "-wal"
+                        if os.path.exists(wal_path):
+                            current_mtime = max(current_mtime, os.path.getmtime(wal_path))
+
+                        # ถ้าเวลาไม่ตรงกับครั้งล่าสุด = มีการเปลี่ยนแปลง
+                        if current_mtime != last_mtime:
+                            last_mtime = current_mtime
+                            print("Database changed! Refreshing UI...") # Log ดูเล่นๆ
+                            refresh_ui()
+                except Exception as e:
+                    print(f"Sync Error: {e}")
+        
+        # รันใน Thread แยก เพื่อไม่ให้หน้าจอค้าง
+        threading.Thread(target=sync_loop, daemon=True).start()
+
+    # สั่งเริ่มระบบ Auto Sync
+    start_auto_sync()
+    
     check_startup()
     
     def on_window_event(e):

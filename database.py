@@ -9,12 +9,11 @@ class DatabaseManager:
         self.conn = None
     
     def connect(self):
-        # Note: check_same_thread=False is used for Flet compatibility
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        
-        # [เพิ่มบรรทัดนี้] เปิดโหมด WAL เพื่อให้ทำงานพร้อมกันได้โดยไม่ล็อค
-        self.conn.execute("PRAGMA journal_mode=WAL;")
-        
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL;")
+        except Exception as e:
+            print(f"Warning: Could not set WAL mode: {e}")
         self.create_tables()
         self.migrate_db()
 
@@ -32,20 +31,15 @@ class DatabaseManager:
 
     def migrate_db(self):
         cursor = self.conn.cursor()
-        # Migration 1: Transaction Payment ID
         try:
             cursor.execute("SELECT payment_id FROM transactions LIMIT 1")
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE transactions ADD COLUMN payment_id INTEGER DEFAULT NULL")
-        
-        # Migration 2: Recurring Expenses columns
         try:
             cursor.execute("SELECT payment_id FROM recurring_expenses LIMIT 1")
         except sqlite3.OperationalError:
-            # [MODIFIED] Removed print("Migrating: Adding columns...")
             cursor.execute("ALTER TABLE recurring_expenses ADD COLUMN payment_id INTEGER DEFAULT NULL")
             cursor.execute("ALTER TABLE recurring_expenses ADD COLUMN auto_pay INTEGER DEFAULT 0")
-        
         self.conn.commit()
 
     def add_defaults(self, cursor):
@@ -72,7 +66,6 @@ class DatabaseManager:
         
         if item != "ยอดยกมา" and item != "Balance Forward":
             self.recalculate_rollovers_from(date)
-            
         return last_id
 
     def update_transaction(self, tid, item, amount, category, payment_id=None):
@@ -103,23 +96,18 @@ class DatabaseManager:
         """
         params = []
         conditions = []
-        
         if date_filter:
             conditions.append("date(t.date) = date(?)")
             params.append(date_filter)
         elif month_filter: 
             conditions.append("strftime('%Y-%m', t.date) = ?")
             params.append(month_filter)
-            
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-            
         query += " ORDER BY t.date DESC"
         return self.conn.execute(query, tuple(params)).fetchall()
 
     def get_summary(self, filter_str=None):
-        # [แก้ไข] เพิ่ม OR type='repayment' ในส่วนรายจ่าย
-        # [แก้ไข] ปรับ WHERE ให้ยอมรับ payment_id ถ้าเป็นรายการ repayment
         base = """
             SELECT 
                 SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 
@@ -128,7 +116,6 @@ class DatabaseManager:
             WHERE (payment_id IS NULL OR type='repayment')
         """
         params = []
-        
         if filter_str:
             if len(filter_str) == 7:
                 base += " AND strftime('%Y-%m', date) = ?"
@@ -145,7 +132,6 @@ class DatabaseManager:
     
     def get_month_balance(self, year, month):
         month_str = f"{year}-{month:02d}"
-        # [แก้ไข] เพิ่ม repayment ใน IN (...) และเงื่อนไข WHERE
         query = """
             SELECT SUM(CASE WHEN type='income' THEN amount ELSE -amount END) 
             FROM transactions 
@@ -193,7 +179,6 @@ class DatabaseManager:
         else:
              query = "SELECT count(*) FROM transactions WHERE item=? AND amount=? AND category=? AND strftime('%Y-%m', date)=? AND payment_id=?"
              args = (item, amount, category, month_str, payment_id)
-        
         c = self.conn.execute(query, args).fetchone()[0]
         return c > 0
 
@@ -214,8 +199,7 @@ class DatabaseManager:
 
     def delete_category(self, cid):
         curr = self.conn.execute("SELECT name FROM categories WHERE id=?", (cid,)).fetchone()
-        if curr and curr[0] == "อื่นๆ":
-            return False 
+        if curr and curr[0] == "อื่นๆ": return False 
         self.conn.execute("DELETE FROM categories WHERE id=?", (cid,))
         self.conn.commit()
         return True 
@@ -252,9 +236,31 @@ class DatabaseManager:
         self.conn.execute("DELETE FROM credit_cards")
         self.conn.commit()
 
-    def get_card_usage(self, card_id):
-        spent = self.conn.execute("SELECT SUM(amount) FROM transactions WHERE payment_id=? AND type='expense'", (card_id,)).fetchone()[0] or 0.0
-        repaid = self.conn.execute("SELECT SUM(amount) FROM transactions WHERE payment_id=? AND type='repayment'", (card_id,)).fetchone()[0] or 0.0
+    # [FIXED] คำนวณยอดหนี้สะสมแบบตัดยอด (Cumulative) ตามเดือนที่เลือก
+    def get_card_usage(self, card_id, month_filter=None):
+        query_spent = "SELECT SUM(amount) FROM transactions WHERE payment_id=? AND type='expense'"
+        query_repaid = "SELECT SUM(amount) FROM transactions WHERE payment_id=? AND type='repayment'"
+        args = [card_id]
+        
+        if month_filter:
+            # แปลง month_filter (YYYY-MM) ให้เป็นวันที่ตัดยอด (วันแรกของเดือนถัดไป)
+            # เช่น filter="2024-01" -> เอา transactions ที่ date < "2024-02-01"
+            try:
+                y, m = map(int, month_filter.split('-'))
+                if m == 12:
+                    ny, nm = y + 1, 1
+                else:
+                    ny, nm = y, m + 1
+                cutoff_date = f"{ny}-{nm:02d}-01"
+                
+                query_spent += " AND date(date) < date(?)"
+                query_repaid += " AND date(date) < date(?)"
+                args.append(cutoff_date)
+            except:
+                pass # ถ้าแปลงวันที่ผิดพลาด ก็ให้ดึงทั้งหมด (Total) แทน
+            
+        spent = self.conn.execute(query_spent, tuple(args)).fetchone()[0] or 0.0
+        repaid = self.conn.execute(query_repaid, tuple(args)).fetchone()[0] or 0.0
         return spent - repaid
     
     def get_card_transactions(self, card_id, month_str):
@@ -280,7 +286,6 @@ class DatabaseManager:
         if prev_month == 0:
             prev_month = 12
             prev_year -= 1
-        
         start_dt = datetime(prev_year, prev_month, 1)
         self.recalculate_rollovers_from(start_dt)
         return True
@@ -301,7 +306,6 @@ class DatabaseManager:
             if next_year > now.year + 5: break 
 
             balance = self.get_month_balance(curr_year, curr_month)
-            
             next_month_str = f"{next_year}-{next_month:02d}"
             target_date = datetime(next_year, next_month, 1)
             
