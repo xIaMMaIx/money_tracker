@@ -43,7 +43,7 @@ def main(page: ft.Page):
         target_w, target_h = 400, 600
         min_w, min_h = 400, 600      # เพิ่มบรรทัดนี้
     else:
-        target_w, target_h = 1200, 800
+        target_w, target_h = 1000, 800
         min_w, min_h = 1000, 800     # เพิ่มบรรทัดนี้ (ขนาดขั้นต่ำที่ต้องการ)
         
     # --- Initial Window Setup (Hidden) ---
@@ -720,35 +720,60 @@ def main(page: ft.Page):
     def switch_view(mode, should_center=True):
         nonlocal current_view_mode
         current_view_mode = mode
-        main_container.opacity = 0; main_container.update(); time.sleep(0.3) 
         
-        if mode == "simple":
-            # [สำคัญ] ต้องรีเซ็ต min ให้เป็น 0 ก่อน ระบบถึงจะยอมให้ย่อหน้าต่างลงได้
-            page.window.min_width = 0
-            page.window.min_height = 0
-            page.update()  # สั่งอัปเดตทันทีเพื่อให้ค่า min เป็น 0 จริงๆ
+        # 1. ซ่อน UI (Fade Out)
+        main_container.opacity = 0
+        # เคลียร์ Content ทิ้งทันที เพื่อลบตัวดันขนาด (Layout Constraints)
+        main_container.content = ft.Container() 
+        main_container.update()
+        
+        # 2. เช็ค Maximize และคืนค่ากลับมาก่อน (ถ้ามี)
+        if page.window.maximized:
+            page.window.maximized = False
+            page.update()
+            time.sleep(0.2) # รอ OS ย่อจากเต็มจอ
             
-            # จากนั้นค่อยสั่งย่อขนาด
+        # 3. [จุดสำคัญ] ปลดล็อกขนาดขั้นต่ำก่อน
+        page.window.min_width = 0
+        page.window.min_height = 0
+        page.window.resizable = True
+        page.update()
+        
+        # *** หัวใจสำคัญ: รอให้ OS รับรู้ว่าปลดล็อกแล้วจริงๆ ***
+        time.sleep(0.1) 
+        
+        # 4. สั่งปรับขนาดหน้าต่าง
+        if mode == "simple":
             page.window.width = 400
             page.window.height = 600
-            
-            # (ทางเลือก) ถ้าอยากล็อคไม่ให้ย่อเล็กกว่านี้ค่อยตั้งค่ากลับ
-            page.window.min_width = 400
-            page.window.min_height = 600
-            
         else:
-            # โหมด Full
-            page.window.min_width = 1200
-            page.window.min_height = 800
             page.window.width = 1200
             page.window.height = 800
+        
+        if should_center:
+            page.window.center()
             
-        if should_center: page.window.center()
+        page.update()
         
-        if mode == "simple": main_container.content = build_simple_view()
-        else: main_container.content = build_full_view()
-        
-        refresh_ui(); page.update(); time.sleep(0.15); main_container.opacity = 1; main_container.update()
+        # *** รอให้หน้าต่างย่อ/ขยายเสร็จจริงๆ ก่อนใส่เนื้อหา ***
+        time.sleep(0.2) 
+
+        # 5. โหลดเนื้อหาใหม่ (Layout) และล็อกขนาดขั้นต่ำใหม่
+        if mode == "simple":
+            main_container.content = build_simple_view()
+            page.window.min_width = 400
+            page.window.min_height = 600
+        else:
+            main_container.content = build_full_view()
+            page.window.min_width = 1000
+            page.window.min_height = 800
+            
+        page.update()
+
+        # 6. รีเฟรชข้อมูลและแสดงผล (Fade In)
+        refresh_ui()
+        main_container.opacity = 1
+        main_container.update()
         
     def init_application(selected_path):
         nonlocal current_db
