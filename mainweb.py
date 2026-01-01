@@ -618,5 +618,80 @@ def main(page: ft.Page):
     
     init_web()
 
+    # ///////////////////////////////////////////////////////////////
+    # [SECTION 8] LOGIN SYSTEM (IMPROVED)
+    # ///////////////////////////////////////////////////////////////
+    
+    # [แก้ตรงนี้] ใส่ str() ครอบ เพื่อกันพลาดกรณี Config เป็นตัวเลข
+    user_passcode = str(config.get("passcode", "1234"))
+
+    def show_main_app():
+        page.clean()
+        page.add(main_container)
+        start_auto_sync()
+        init_web()
+
+    def show_login_screen():
+        err_text = ft.Text("", color="red", size=14)
+        
+        def authen(e):
+            # Debug: ปริ้นดูค่าจริงใน Terminal ว่า Code อ่านได้ค่าอะไร
+            print(f"Input: '{txt_pass.value}' vs Config: '{user_passcode}'")
+            
+            if txt_pass.value == user_passcode:
+                show_main_app()
+            else:
+                err_text.value = "รหัสผ่านไม่ถูกต้อง (Incorrect Passcode)"
+                txt_pass.value = ""
+                txt_pass.focus()
+                page.update()
+
+        txt_pass = ft.TextField(
+            label="Enter Passcode", 
+            password=True, 
+            can_reveal_password=True, 
+            text_align=ft.TextAlign.CENTER,
+            on_submit=authen,
+            width=250
+        )
+        
+        btn_enter = ft.ElevatedButton(
+            "Access System", 
+            icon="login", 
+            on_click=authen,
+            bgcolor=COLOR_PRIMARY,
+            color="white",
+            width=250,
+            height=45
+        )
+
+        login_container = ft.Container(
+            content=ft.Column([
+                ft.Icon("lock", size=50, color=COLOR_PRIMARY),
+                ft.Text("Authentication Required", size=20, weight="bold"),
+                ft.Container(height=10),
+                txt_pass,
+                err_text,
+                ft.Container(height=10),
+                btn_enter
+            ], horizontal_alignment="center", alignment="center"),
+            alignment=ft.alignment.center,
+            expand=True
+        )
+        
+        page.add(login_container)
+
+    # ///////////////////////////////////////////////////////////////
+    # [SECTION 9] STARTUP LOGIC
+    # ///////////////////////////////////////////////////////////////
+    
+    # เช็คว่ามี main_container ถูก add ไปหรือยัง ถ้ามีแล้วให้เอาออกก่อนชั่วคราวเพื่อโชว์ Login
+    # (เนื่องจากใน Section 3 เดิม คุณมี page.add(main_container) ไปแล้ว)
+    if main_container in page.controls:
+        page.controls.remove(main_container)
+
+    # เรียกใช้งานหน้า Login
+    show_login_screen()
+    
 if __name__ == "__main__":
     ft.app(target=main, view=ft.AppView.WEB_BROWSER)
