@@ -432,7 +432,8 @@ def main(page: ft.Page):
                         tooltip="Waiting for auto-pay date"
                     )
             else:
-                pay_func = lambda e, i=item_name, a=amt, c=cat, d=day, cm=check_month, p=pid: dialogs.pay_recurring_action(page, current_db, refresh_ui, i,a,c,d,cm,p)
+                # [MODIFIED] Pass selected_date_str to dialogs
+                pay_func = lambda e, i=item_name, a=amt, c=cat, d=day, cm=check_month, p=pid: dialogs.pay_recurring_action(page, current_db, refresh_ui, i,a,c,d,cm,p, selected_date_str=current_filter_date)
                 btn = ft.ElevatedButton(T("paid"), disabled=True, height=25) if is_paid else ft.ElevatedButton(T("pay"), style=ft.ButtonStyle(bgcolor=COLOR_PRIMARY, color="white"), height=25, on_click=pay_func)
             
             del_func = lambda e, id=rid: dialogs.confirm_delete_rec(page, current_db, config, refresh_ui, id)

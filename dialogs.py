@@ -271,19 +271,66 @@ def open_add_rec_dialog(page, db, config, refresh_cb):
     )
     page.open(dlg)
 
-def pay_recurring_action(page, db, refresh_cb, item, amt, cat, day, check_month, payment_id=None, is_auto=False, suppress_refresh=False):
-    try: 
-        y, m = map(int, check_month.split('-'))
-        d = datetime(y, m, day)
-    except: 
-        d = datetime.now()
+# [file: dialogs.py]
+
+def pay_recurring_action(page, db, refresh_cb, item, amt, cat, day, check_month, payment_id=None, is_auto=False, suppress_refresh=False, selected_date_str=None):
+    # 1. เตรียมตัวแปร
+    target_date = None
     
-    db.add_transaction("expense", item, amt, cat, d, payment_id=payment_id)
-    
+    # แยกปีเดือนของรายการ Recurring นี้
+    try:
+        y_rec, m_rec = map(int, check_month.split('-'))
+    except:
+        now_tmp = datetime.now()
+        y_rec, m_rec = now_tmp.year, now_tmp.month
+
+    # --- LOGIC การเลือกวันที่ ---
     if is_auto:
-        safe_show_snack(page, f"⚡ Auto-Paid: {item} ({check_month})", "blue")
+        # กรณี Auto Pay: บังคับใช้วันที่ตามกำหนดการเสมอ
+        try:
+            target_date = datetime(y_rec, m_rec, day)
+        except ValueError:
+             if m_rec == 12: target_date = datetime(y_rec+1, 1, 1)
+             else: target_date = datetime(y_rec, m_rec+1, 1)
     else:
-        safe_show_snack(page, f"Paid: {item} ({check_month})", "green")
+        # กรณี Manual Pay (กดจ่ายเอง)
+        
+        # Priority 1: ถ้ามีการเลือกวันที่ในปฏิทินไว้ ให้ใช้วันนั้นเลย
+        if selected_date_str:
+            try:
+                # แปลงวันที่จาก String เป็น Date Object
+                sel_dt = datetime.strptime(selected_date_str, "%Y-%m-%d")
+                # รวมกับเวลาปัจจุบัน เพื่อให้รายการเรียงลำดับสวยงาม (ไม่ไปกองอยู่ 00:00:00)
+                target_date = datetime.combine(sel_dt.date(), datetime.now().time())
+            except:
+                pass # ถ้าแปลงพลาด ให้หลุดไป Priority ถัดไป
+
+        # Priority 2: ถ้าไม่ได้เลือกวันที่ (selected_date_str เป็น None)
+        if target_date is None:
+            now = datetime.now()
+            # เช็คว่าเดือนของรายการ ตรงกับเดือนปัจจุบันจริงๆ หรือไม่
+            is_real_current_month = (now.year == y_rec and now.month == m_rec)
+
+            if is_real_current_month:
+                # ถ้าอยู่เดือนปัจจุบัน ให้ใช้วันที่ "ตอนนี้" (Today)
+                target_date = now
+            else:
+                # ถ้าดูเดือนเก่า/ใหม่ ให้ใช้วันที่ตามกำหนดการ (เพื่อไม่ให้วันที่กระโดดข้ามเดือน)
+                try:
+                    target_date = datetime(y_rec, m_rec, day)
+                except ValueError:
+                    if m_rec == 12: target_date = datetime(y_rec+1, 1, 1)
+                    else: target_date = datetime(y_rec, m_rec+1, 1)
+
+    # 2. บันทึกลงฐานข้อมูล
+    db.add_transaction("expense", item, amt, cat, target_date, payment_id=payment_id)
+    
+    # 3. แสดงผล Feedback
+    if is_auto:
+        safe_show_snack(page, f"⚡ Auto-Paid: {item}", "blue")
+    else:
+        date_display = target_date.strftime("%d/%m")
+        safe_show_snack(page, f"Paid: {item} on {date_display}", "green")
         
     if not suppress_refresh:
         refresh_cb()
