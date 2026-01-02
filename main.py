@@ -107,7 +107,7 @@ def main(page: ft.Page):
 
     txt_summary_header = ft.Text(T("overview"), color="grey")
     
-    summary_row = ft.Row([card_inc, card_exp, card_bal, card_net], spacing=2, expand=True)
+    summary_row = ft.Row([card_inc, card_exp, card_bal, card_net], spacing=6, expand=True)
 
     # --- Budget Widgets ---
     txt_budget_title = ft.Text(T("budget"), color="grey", size=12)
