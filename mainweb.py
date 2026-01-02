@@ -75,6 +75,7 @@ def main(page: ft.Page):
     btn_settings = ft.IconButton("settings", icon_size=20)
     txt_app_title = ft.Text(T("app_title"), color=COLOR_PRIMARY)
     
+    # --- Elements for Full View ---
     summary_font_delta = current_font_delta - 4 
 
     card_inc = SummaryCard("income", "+0.00", COLOR_INCOME, "arrow_upward", summary_font_delta, current_font_weight_str)
@@ -131,11 +132,15 @@ def main(page: ft.Page):
         expand=True 
     )
     
-    # ใช้ Column แบบ Scroll เพื่อความเสถียรบนเว็บ
+    # --- Lists ---
+    # สำหรับ Desktop (Full View)
     trans_list_view = ft.Column(scroll=ft.ScrollMode.ADAPTIVE, expand=True, spacing=5)
-    
     recurring_list_view = ft.Column(spacing=5, scroll="hidden")
     cards_row = ft.ResponsiveRow(spacing=10, run_spacing=10, visible=False)
+    
+    # [NEW] สำหรับ Mobile (Simple View)
+    mobile_list_view = ft.Column(spacing=2, scroll=ft.ScrollMode.HIDDEN, expand=True)
+    txt_mobile_date = ft.Text("Date", size=28, weight="bold", color="white")
     
     def on_date_change(d): 
         nonlocal current_filter_date
@@ -187,6 +192,14 @@ def main(page: ft.Page):
             except: txt_heading_recent.value = current_filter_date
         else: txt_heading_recent.value = T("recent_trans")
         
+        # อัปเดตวันที่ใน Simple Mode
+        txt_mobile_date.value = datetime.now().strftime("%d %B %Y")
+        if current_filter_date:
+             try:
+                dt_obj = datetime.strptime(current_filter_date, "%Y-%m-%d")
+                txt_mobile_date.value = dt_obj.strftime("%d %B %Y")
+             except: pass
+
         btn_reset_filter.text = T("reset_filter"); 
         card_inc.txt_title.value = T("income"); 
         card_exp.txt_title.value = T("expense"); 
@@ -231,14 +244,12 @@ def main(page: ft.Page):
         is_date_selected = (current_filter_date is not None)
         enable_buttons = is_current_month or is_date_selected
         
-        # [MODIFIED] Net Worth ซ่อนเมื่อดูเดือนเก่า
         card_net.visible = is_current_month
         
         bg_exp = COLOR_BTN_EXPENSE if enable_buttons else "grey"
         bg_inc = COLOR_BTN_INCOME if enable_buttons else "grey"
         
         btn_expense.bgcolor = bg_exp; btn_income.bgcolor = bg_inc
-        btn_income.bgcolor = bg_inc # Web ไม่มี btn_simple
 
         current_db.check_and_rollover(cal.year, cal.month)
         current_month_str = f"{cal.year}-{cal.month:02d}"
@@ -251,7 +262,6 @@ def main(page: ft.Page):
         cards_db = current_db.get_cards()
         total_debt = 0.0
         
-        # [MODIFIED] คำนวณ Net Worth จากหนี้สะสมจนถึงสิ้นเดือนนั้นๆ
         if cards_db:
              for c in cards_db:
                  total_debt += current_db.get_card_usage(c[0], current_month_str)
@@ -270,16 +280,14 @@ def main(page: ft.Page):
         _, mon_exp, _ = current_db.get_summary(current_month_str)
         ratio = mon_exp / limit if limit > 0 else 0; pb_budget.value = min(ratio, 1.0); pb_budget.color = COLOR_PRIMARY if ratio < 0.5 else ("orange" if ratio < 0.8 else COLOR_EXPENSE); txt_budget_value.value = f"{format_currency(mon_exp)} / {format_currency(limit)}"
         
+        # Update Cards Row (if visible in layout)
         cards_row.controls.clear()
-        
-        # [MODIFIED] แสดงรายการบัตรทุกเดือน
         if cards_db:
             count = len(cards_db)
             desktop_span = 12 // min(count, 4) 
             sm_span = 6 if count > 1 else 12 
             dynamic_col = {"xs": 12, "sm": sm_span, "md": desktop_span}
             for c in cards_db: 
-                # [MODIFIED] แสดงยอดหนี้สะสมจนถึงเดือนที่เลือก
                 usage_cumulative = current_db.get_card_usage(c[0], current_month_str)
                 cards_row.controls.append(MiniCardWidget(
                     c, 
@@ -300,15 +308,42 @@ def main(page: ft.Page):
         def call_edit(data):
             dialogs.open_edit_dialog(page, current_db, config, refresh_ui, data)
 
+        # 1. Update Full List (Desktop)
         trans_list_view.controls.clear(); current_date_grp = None
         for r in rows:
             dt_obj = parse_db_date(r[5]); date_str = dt_obj.strftime("%d %B %Y")
             if date_str != current_date_grp: current_date_grp = date_str; trans_list_view.controls.append(ft.Container(content=ft.Text(date_str, size=12+d_font_delta, weight="bold", color="grey"), padding=ft.padding.only(top=10, bottom=5)))
             
-            # [FIX 2] ลบ Animation ที่ทำให้ Web หน่วง/ค้างออก (is_new=False เสมอ)
             card = TransactionCard(r, call_delete, call_edit, d_font_delta, d_font_weight, is_new=False, minimal=False)
             trans_list_view.controls.append(card)
         
+        # 2. Update Mobile List (Simple Mode) [NEW LOGIC]
+        mobile_list_view.controls.clear()
+        if not rows:
+             empty_content = ft.Container(
+                    content=ft.Column([
+                        ft.Container(
+                            content=ft.Icon(name="note_add", size=48, color=COLOR_PRIMARY),
+                            padding=20,
+                            bgcolor=hex_with_opacity(COLOR_PRIMARY, 0.1),
+                            border_radius=50,
+                        ),
+                        ft.Text(T("no_trans_today"), size=16, weight="bold", color="white"),
+                    ], 
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER, 
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=10
+                    ),
+                    alignment=ft.alignment.center,
+                    expand=True
+             )
+             mobile_list_view.controls.append(empty_content)
+        else:
+             # แสดงรายการแบบ Minimal เหมือน Desktop App
+             for r in rows:
+                 card = TransactionCard(r, call_delete, call_edit, d_font_delta, d_font_weight, minimal=True)
+                 mobile_list_view.controls.append(card)
+
         update_recurring_list()
         
         try:
@@ -501,6 +536,49 @@ def main(page: ft.Page):
     # ///////////////////////////////////////////////////////////////
     # [SECTION 7] BUILD & RUN
     # ///////////////////////////////////////////////////////////////
+    
+    # [NEW] Mobile View (Simple Mode Layout like Desktop)
+    def build_mobile_view():
+        # Header: Date and Config
+        header = ft.Container(
+            content=ft.Row([txt_mobile_date, btn_settings], alignment="spaceBetween", vertical_alignment="center"), 
+            padding=ft.padding.only(top=10, bottom=15)
+        )
+        
+        # Body: Transaction List (Minimal Style)
+        body = ft.Container(
+            content=mobile_list_view, 
+            expand=True, 
+            bgcolor=COLOR_SURFACE, 
+            border_radius=15, 
+            padding=10
+        )
+        
+        # Buttons for Footer
+        btn_simple_inc = ft.Container(
+            content=ft.Row([ft.Icon("add_circle", size=24, color="white"), ft.Text(T("income"), size=16, weight="bold", color="white")], alignment="center", spacing=5), 
+            bgcolor=COLOR_BTN_INCOME, border_radius=15, height=60, expand=True, ink=True, 
+            on_click=lambda e: open_manual_add_dialog("income")
+        )
+
+        btn_simple_exp = ft.Container(
+            content=ft.Row([ft.Icon("remove_circle", size=24, color="white"), ft.Text(T("expense"), size=16, weight="bold", color="white")], alignment="center", spacing=5), 
+            bgcolor=COLOR_BTN_EXPENSE, border_radius=15, height=60, expand=True, ink=True, 
+            on_click=lambda e: open_manual_add_dialog("expense")
+        )
+
+        footer = ft.Container(
+            content=ft.Row([btn_simple_inc, btn_simple_exp], spacing=10, alignment="center"), 
+            padding=ft.padding.only(top=10, bottom=5)
+        )
+
+        # Assemble like Desktop Simple Mode
+        return ft.Container(
+            content=ft.Column([header, body, footer], spacing=0), 
+            padding=10, 
+            expand=True
+        )
+
     def build_full_view():
         sidebar = ft.Container(
             padding=ft.padding.only(left=20, right=20, top=10, bottom=20), 
@@ -517,13 +595,11 @@ def main(page: ft.Page):
             ])
         )
 
-        # [FIX 3] กำหนด expand=True ให้ Container แม่ และ Column แม่ เพื่อให้ลูกๆ ยืดได้เต็มที่
         main_pane = ft.Container(expand=True, padding=10, content=ft.Column([
             summary_section, 
             cards_row, 
             ft.Divider(color="transparent"),
             ft.Row([txt_heading_recent, ft.OutlinedButton("Chart", icon="bar_chart", on_click=open_top10_dialog)], alignment="spaceBetween"),
-            # Container ที่หุ้ม trans_list_view ต้อง expand ด้วย
             ft.Container(content=trans_list_view, expand=True) 
         ], expand=True)) 
         
@@ -531,6 +607,19 @@ def main(page: ft.Page):
             ft.Column([main_pane], col={"md": 9, "sm": 12}),
             ft.Column([sidebar], col={"md": 3, "sm": 12})
         ])
+    
+    # Responsive Logic
+    def responsive_layout():
+        if main_container not in page.controls:
+             page.add(main_container)
+
+        if page.width < 800: # Mobile Breakpoint
+            main_container.content = build_mobile_view()
+        else:
+            main_container.content = build_full_view()
+        
+        main_container.update()
+        refresh_ui()
 
     def init_web(specific_path=None):
         nonlocal current_db
@@ -553,76 +642,64 @@ def main(page: ft.Page):
             
             config["db_path"] = target_path
             
-            main_container.content = build_full_view()
-            refresh_ui()
+            responsive_layout()
+            
         except Exception as e:
             print(f"Error Init DB: {e}", flush=True)
             safe_show_snack(f"Database Error: {e}", "red")
+            
+    def on_resize(e):
+        responsive_layout()
+    page.on_resized = on_resize
 
     # -----------------------------------------------------------
-    # [IMPROVED] ระบบ Auto Sync แบบมี Log และป้องกัน Error
+    # [IMPROVED] ระบบ Auto Sync
     # -----------------------------------------------------------
     def start_auto_sync():
         def sync_loop():
-            # 1. หาตำแหน่งไฟล์ DB
             current_conf = load_config()
             target_path = current_conf.get("db_path", "modern_money.db")
             
-            # แปลงเป็น Absolute Path
             if not os.path.isabs(target_path):
                 base_dir = os.path.dirname(os.path.abspath(__file__))
                 target_path = os.path.join(base_dir, target_path)
 
-            print(f"[WEB SYNC] เริ่มเฝ้าดูไฟล์: {target_path}", flush=True) # Log 1
+            print(f"[WEB SYNC] เริ่มเฝ้าดูไฟล์: {target_path}", flush=True) 
             
             last_mtime = 0
             if os.path.exists(target_path):
                 last_mtime = os.path.getmtime(target_path)
 
             while True:
-                time.sleep(2) # ตรวจสอบทุก 2 วินาที
+                time.sleep(2)
                 try:
                     if not os.path.exists(target_path):
-                        print("[WEB SYNC] หาไฟล์ Database ไม่เจอ!", flush=True)
                         continue
 
-                    # อ่านเวลาแก้ไขล่าสุด
                     curr_mtime = os.path.getmtime(target_path)
-                    
-                    # เช็คไฟล์ WAL (ไฟล์ชั่วคราวของ SQLite) ด้วย
                     wal_path = target_path + "-wal"
                     if os.path.exists(wal_path):
                         curr_mtime = max(curr_mtime, os.path.getmtime(wal_path))
 
-                    # ถ้าเวลาเปลี่ยน แสดงว่ามีการบันทึกข้อมูล
                     if curr_mtime != last_mtime:
-                        print(f"[WEB SYNC] พบข้อมูลใหม่! กำลังรีเฟรชหน้าจอ... ({curr_mtime})", flush=True) # Log 2
+                        print(f"[WEB SYNC] พบข้อมูลใหม่! ({curr_mtime})", flush=True)
                         last_mtime = curr_mtime
-                        
-                        # สั่ง Refresh UI (ใส่ Try-Except กันแอปดับ)
                         try:
                             refresh_ui()
-                            print("[WEB SYNC] รีเฟรชเสร็จสิ้น", flush=True)
-                        except Exception as ui_err:
-                            # ถ้าหน้าเว็บถูกปิดไปแล้ว อาจจะ Error ได้ ให้ปล่อยผ่าน
-                            print(f"[WEB SYNC] อัปเดตหน้าจอไม่ได้ (อาจปิดแท็บไปแล้ว): {ui_err}", flush=True)
+                        except: pass
                             
                 except Exception as e:
-                    print(f"[WEB SYNC] เกิดข้อผิดพลาดใน Loop: {e}", flush=True)
+                    print(f"[WEB SYNC] Error: {e}", flush=True)
         
-        # รัน Thread
         threading.Thread(target=sync_loop, daemon=True).start()
 
-    # สั่งรันระบบ
     start_auto_sync()
-    
     init_web()
 
     # ///////////////////////////////////////////////////////////////
-    # [SECTION 8] LOGIN SYSTEM (IMPROVED)
+    # [SECTION 8] LOGIN SYSTEM
     # ///////////////////////////////////////////////////////////////
     
-    # [แก้ตรงนี้] ใส่ str() ครอบ เพื่อกันพลาดกรณี Config เป็นตัวเลข
     user_passcode = str(config.get("passcode", "1234"))
 
     def show_main_app():
@@ -635,9 +712,7 @@ def main(page: ft.Page):
         err_text = ft.Text("", color="red", size=14)
         
         def authen(e):
-            # Debug: ปริ้นดูค่าจริงใน Terminal ว่า Code อ่านได้ค่าอะไร
             print(f"Input: '{txt_pass.value}' vs Config: '{user_passcode}'")
-            
             if txt_pass.value == user_passcode:
                 show_main_app()
             else:
@@ -681,17 +756,11 @@ def main(page: ft.Page):
         
         page.add(login_container)
 
-    # ///////////////////////////////////////////////////////////////
-    # [SECTION 9] STARTUP LOGIC
-    # ///////////////////////////////////////////////////////////////
-    
-    # เช็คว่ามี main_container ถูก add ไปหรือยัง ถ้ามีแล้วให้เอาออกก่อนชั่วคราวเพื่อโชว์ Login
-    # (เนื่องจากใน Section 3 เดิม คุณมี page.add(main_container) ไปแล้ว)
     if main_container in page.controls:
         page.controls.remove(main_container)
 
-    # เรียกใช้งานหน้า Login
     show_login_screen()
     
 if __name__ == "__main__":
-    ft.app(target=main, view=ft.AppView.WEB_BROWSER)
+    port = int(os.environ.get("PORT", 8080))
+    ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port)

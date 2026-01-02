@@ -19,7 +19,18 @@ class TransactionCard(ft.Container):
         title_size = 16 + font_delta
         amt_size = 16 + font_delta
         
-        self.actions_container = ft.Container(content=ft.Row([ft.IconButton(icon="edit", icon_color=COLOR_PRIMARY, tooltip="Edit", on_click=lambda e: onEdit(data)), ft.IconButton(icon="delete", icon_color=COLOR_BTN_EXPENSE, tooltip="Delete", on_click=lambda e: onDelete(self.tid))], spacing=0), width=0, opacity=0, animate=ft.Animation(300, "easeOut"), animate_opacity=200, clip_behavior=ft.ClipBehavior.HARD_EDGE)
+        # Container สำหรับปุ่ม Action (Edit/Delete)
+        self.actions_container = ft.Container(
+            content=ft.Row([
+                ft.IconButton(icon="edit", icon_color=COLOR_PRIMARY, tooltip="Edit", on_click=lambda e: onEdit(data)), 
+                ft.IconButton(icon="delete", icon_color=COLOR_BTN_EXPENSE, tooltip="Delete", on_click=lambda e: onDelete(self.tid))
+            ], spacing=0), 
+            width=0, # เริ่มต้นซ่อนไว้
+            opacity=0, 
+            animate=ft.Animation(300, "easeOut"), 
+            animate_opacity=200, 
+            clip_behavior=ft.ClipBehavior.HARD_EDGE
+        )
         
         meta_info = [ft.Text(f"{self.category}", size=base_size - 2, color="grey")]
         if self.card_name: meta_info.append(ft.Container(content=ft.Text(self.card_name, size=10, color="white"), bgcolor="#333333", padding=ft.padding.symmetric(horizontal=4, vertical=2), border_radius=4))
@@ -28,6 +39,7 @@ class TransactionCard(ft.Container):
         amt_text = f"{sign}{format_currency(self.amount)}"
         if self.ttype == "repayment": amt_text = f"Pay {format_currency(self.amount)}"
         
+        # Layout การแสดงผล
         if minimal:
             card_content = ft.Row([
                 ft.Column([
@@ -36,7 +48,7 @@ class TransactionCard(ft.Container):
                 ], expand=True, spacing=0),
                 ft.Row([
                     ft.Text(amt_text, color=main_color, weight=font_weight, size=amt_size), 
-                    self.actions_container
+                    self.actions_container # ปุ่มจะเลื่อนออกมาตรงนี้
                 ], spacing=0, alignment="end")
             ], alignment="spaceBetween", vertical_alignment="center")
             self.padding = ft.padding.symmetric(horizontal=5, vertical=8)
@@ -46,10 +58,34 @@ class TransactionCard(ft.Container):
             self.padding = 0
             self.border = ft.border.only(bottom=ft.BorderSide(3, main_color))
             
-        self.content = card_content; self.on_hover = self.toggle_actions; self.animate_opacity = 500; self.opacity = 0 if is_new else 1; 
-        self.bgcolor = COLOR_SURFACE; self.border_radius = ft.border_radius.only(top_left=5, top_right=5); self.margin = ft.margin.only(bottom=2)
+        self.content = card_content
+        self.on_hover = self.toggle_actions # สำหรับ Desktop (เมาส์ชี้)
+        self.on_click = self.toggle_actions_click # [เพิ่มใหม่] สำหรับ Mobile (แตะเพื่อเปิด)
+        
+        self.animate_opacity = 500
+        self.opacity = 0 if is_new else 1
+        self.bgcolor = COLOR_SURFACE
+        self.border_radius = ft.border_radius.only(top_left=5, top_right=5)
+        self.margin = ft.margin.only(bottom=2)
 
-    def toggle_actions(self, e): is_hover = (e.data == "true"); self.actions_container.width = 80 if is_hover else 0; self.actions_container.opacity = 1 if is_hover else 0; self.actions_container.update()
+    # ฟังก์ชันสำหรับ Desktop (Hover)
+    def toggle_actions(self, e): 
+        is_hover = (e.data == "true")
+        self.actions_container.width = 80 if is_hover else 0
+        self.actions_container.opacity = 1 if is_hover else 0
+        self.actions_container.update()
+
+    # [เพิ่มใหม่] ฟังก์ชันสำหรับ Mobile (Click)
+    def toggle_actions_click(self, e):
+        # เช็คว่าตอนนี้เปิดหรือปิดอยู่ แล้วสลับสถานะ
+        if self.actions_container.width == 0:
+             self.actions_container.width = 80
+             self.actions_container.opacity = 1
+        else:
+             self.actions_container.width = 0
+             self.actions_container.opacity = 0
+        self.actions_container.update()
+        
 
 class SummaryCard(ft.Container):
     def __init__(self, title_key, value, color, icon_name, font_delta=0, font_weight="w600"):
