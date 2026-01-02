@@ -76,17 +76,43 @@ class SummaryCard(ft.Container):
 class CalendarWidget(ft.Column):
     def __init__(self, page, on_select, font_delta=0, font_weight="w600"):
         super().__init__()
-        self.page_ref = page; self.on_select = on_select; 
-        self.font_delta = font_delta; self.font_weight = font_weight
-        self.now = datetime.now(); self.year, self.month = self.now.year, self.now.month; self.sel_date = None
+        self.page_ref = page
+        self.on_select = on_select
+        self.font_delta = font_delta
+        self.font_weight = font_weight
+        self.now = datetime.now()
+        self.year, self.month = self.now.year, self.now.month
+        self.sel_date = None
         self.db = None
         
-        self.header_text = ft.Text(weight=font_weight)
-        self.header_btn = ft.Container(content=self.header_text, padding=5, border_radius=5, ink=True, on_click=lambda e: self.page_ref.open(self.date_picker))
-        self.grid = ft.Column(spacing=0)
+        self.header_text = ft.Text(weight=font_weight, text_align=ft.TextAlign.CENTER)
+        
+        # ปรับ header_btn ให้คลิกง่ายขึ้น
+        self.header_btn = ft.Container(
+            content=self.header_text, 
+            padding=ft.padding.symmetric(horizontal=10, vertical=5), 
+            border_radius=5, 
+            ink=True, 
+            on_click=lambda e: self.page_ref.open(self.date_picker),
+            alignment=ft.alignment.center
+        )
+        
+        self.grid = ft.Column(spacing=2) # เพิ่ม spacing เล็กน้อยเพื่อให้ไม่เบียดกันจนคลิกยาก
         self.date_picker = ft.DatePicker(on_change=self.on_date_picked, on_dismiss=None, first_date=datetime(2000, 1, 1), last_date=datetime(2100, 12, 31))
         self.page_ref.overlay.append(self.date_picker)
-        self.controls = [ft.Row([ft.IconButton("chevron_left", on_click=lambda e: self.nav(-1)), self.header_btn, ft.IconButton("chevron_right", on_click=lambda e: self.nav(1))], alignment="spaceBetween"), ft.Row([ft.Container(content=ft.Text(d, color="grey"), width=28, alignment=ft.alignment.center) for d in ["Mo","Tu","We","Th","Fr","Sa","Su"]], alignment="spaceBetween"), self.grid]
+        
+        self.controls = [
+            ft.Row([
+                ft.IconButton("chevron_left", on_click=lambda e: self.nav(-1), tooltip="Previous Month"), 
+                self.header_btn, 
+                ft.IconButton("chevron_right", on_click=lambda e: self.nav(1), tooltip="Next Month")
+            ], alignment="spaceBetween"), 
+            ft.Row([
+                ft.Container(content=ft.Text(d, color="grey", size=10), width=30, alignment=ft.alignment.center) 
+                for d in ["Mo","Tu","We","Th","Fr","Sa","Su"]
+            ], alignment="spaceBetween"), 
+            self.grid
+        ]
         self.update_style(font_delta, font_weight)
         self.render()
 
@@ -99,22 +125,41 @@ class CalendarWidget(ft.Column):
         self.font_weight = font_weight
         self.header_text.size = 14 + font_delta
         self.header_text.weight = font_weight
+        
         nav_row = self.controls[0]
         nav_row.controls[0].icon_size = 16 + font_delta
         nav_row.controls[2].icon_size = 16 + font_delta
+        
         day_row = self.controls[1]
         for container in day_row.controls:
              container.content.size = 10 + font_delta
         self.render()
 
     def on_date_picked(self, e):
-        if self.date_picker.value: d = self.date_picker.value; self.year = d.year; self.month = d.month; self.sel_date = d; self.render(); self.update(); self.on_select(d.strftime("%Y-%m-%d"))
+        if self.date_picker.value: 
+            d = self.date_picker.value
+            self.year = d.year
+            self.month = d.month
+            self.sel_date = d
+            self.render()
+            self.update()
+            self.on_select(d.strftime("%Y-%m-%d"))
     
     def nav(self, d): 
-        self.month += d; (self.month>12 and (setattr(self,'month',1), setattr(self,'year',self.year+1))) or (self.month<1 and (setattr(self,'month',12), setattr(self,'year',self.year-1))); 
-        self.render(); self.update(); self.on_select(None)
+        self.month += d
+        if self.month > 12:
+            self.month = 1
+            self.year += 1
+        elif self.month < 1:
+            self.month = 12
+            self.year -= 1
+        
+        self.render()
+        self.update()
+        self.on_select(None)
     
     def render(self):
+        # อัปเดตชื่อเดือน
         self.header_text.value = datetime(self.year, self.month, 1).strftime("%B %Y")
         self.grid.controls.clear()
         
@@ -123,30 +168,74 @@ class CalendarWidget(ft.Column):
              month_str = f"{self.year}-{self.month:02d}"
              active_days = self.db.get_active_days(month_str)
 
-        cal = calendar.monthcalendar(self.year, self.month)
-        cell_size = 24 + (self.font_delta * 0.5)
+        cal_data = calendar.monthcalendar(self.year, self.month)
         
-        for week in cal:
+        # ปรับขนาด Cell ให้ใหญ่ขึ้นเล็กน้อยเพื่อรองรับ Dot และคลิกง่ายขึ้นใน Web
+        base_cell_size = 30 + (self.font_delta * 0.5)
+        
+        for week in cal_data:
             row = ft.Row(alignment="spaceBetween")
             for day in week:
-                if day == 0: row.controls.append(ft.Container(width=cell_size, height=cell_size))
+                if day == 0: 
+                    row.controls.append(ft.Container(width=base_cell_size, height=base_cell_size))
                 else:
                     is_today = (day == datetime.now().day and self.month == datetime.now().month and self.year == datetime.now().year)
-                    is_sel = (self.sel_date and day==self.sel_date.day and self.month==self.sel_date.month and self.year==self.sel_date.year)
+                    is_sel = (self.sel_date and day == self.sel_date.day and self.month == self.sel_date.month and self.year == self.sel_date.year)
                     has_data = day in active_days 
-                    bg = COLOR_PRIMARY if is_sel else "transparent"
-                    border = None
-                    if is_today:
-                        border = ft.border.all(1, "grey")
-                    elif has_data:
-                        border = ft.border.only(bottom=ft.BorderSide(2, COLOR_PRIMARY))
-                        
-                    txt_col = "#121212" if is_sel else "white"
-                    row.controls.append(ft.Container(content=ft.Text(str(day), size=12+self.font_delta, color=txt_col), width=cell_size, height=cell_size, alignment=ft.alignment.center, border_radius=cell_size/2 if not has_data else 0, bgcolor=bg, border=border, ink=True, on_click=lambda e, d=day: self.set_date(d)))
+                    
+                    # สีพื้นหลัง (วงกลม)
+                    bg_color = COLOR_PRIMARY if is_sel else "transparent"
+                    
+                    # สีตัวอักษร
+                    txt_color = "#121212" if is_sel else "white"
+                    if is_today and not is_sel:
+                        txt_color = COLOR_PRIMARY  # วันปัจจุบันให้ตัวหนังสือสีฟ้า ถ้าไม่ได้เลือก
+                    
+                    # Border (สำหรับวันปัจจุบันเท่านั้น)
+                    border = ft.border.all(1, "grey") if (is_today and not is_sel) else None
+                    
+                    # [แก้ข้อ 2] จุด (Dot Indicator) แทนเส้นใต้
+                    dot_color = "transparent"
+                    if has_data:
+                        dot_color = "white" if is_sel else COLOR_PRIMARY
+                    
+                    # สร้าง Content ภายในแบบ Column (ตัวเลขขี่คอกับจุด)
+                    inner_content = ft.Column([
+                        ft.Text(str(day), size=12+self.font_delta, color=txt_color, weight="bold" if is_sel or is_today else "normal"),
+                        ft.Container(width=4, height=4, border_radius=2, bgcolor=dot_color) # จุดอยู่ตรงนี้
+                    ], alignment="center", spacing=2, horizontal_alignment="center")
+
+                    # [แก้ข้อ 1] Container หลักสำหรับการคลิก
+                    # เอา ink=False ออกถ้า Web ยังกระตุก แต่ปกติการจัด Alignment ให้ Center จะช่วยเรื่อง Hit Test ได้
+                    day_container = ft.Container(
+                        content=inner_content,
+                        width=base_cell_size,
+                        height=base_cell_size,
+                        alignment=ft.alignment.center,
+                        border_radius=base_cell_size/2,
+                        bgcolor=bg_color,
+                        border=border,
+                        ink=True, 
+                        on_click=lambda e, d=day: self.set_date(d)
+                    )
+                    row.controls.append(day_container)
             self.grid.controls.append(row)
             
-    def set_date(self, day): self.sel_date = datetime(self.year, self.month, day); self.render(); self.update(); self.on_select(self.sel_date.strftime("%Y-%m-%d"))
-    def reset(self): self.now = datetime.now(); self.year = self.now.year; self.month = self.now.month; self.sel_date = None; self.render(); self.update(); self.on_select(None)
+    def set_date(self, day): 
+        self.sel_date = datetime(self.year, self.month, day)
+        self.render()
+        self.update()
+        # ส่งค่ากลับไปที่ mainweb
+        self.on_select(self.sel_date.strftime("%Y-%m-%d"))
+
+    def reset(self): 
+        self.now = datetime.now()
+        self.year = self.now.year
+        self.month = self.now.month
+        self.sel_date = None
+        self.render()
+        self.update()
+        self.on_select(None)
 
 class RealTimeVoiceVisualizer(ft.Row):
     def __init__(self): super().__init__(alignment="center", spacing=4, height=60); self.bars = [ft.Container(width=6, height=5, bgcolor=COLOR_PRIMARY, border_radius=3, animate=ft.Animation(50, "easeOut")) for _ in range(12)]; self.controls = self.bars
