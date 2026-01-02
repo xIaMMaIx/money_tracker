@@ -68,12 +68,19 @@ class DatabaseManager:
             self.recalculate_rollovers_from(date)
         return last_id
 
-    def update_transaction(self, tid, item, amount, category, payment_id=None):
-        old_row = self.conn.execute("SELECT date FROM transactions WHERE id=?", (tid,)).fetchone()
-        self.conn.execute("UPDATE transactions SET item=?, amount=?, category=?, payment_id=? WHERE id=?", (item, amount, category, payment_id, tid))
+    # [UPDATED] รองรับการแก้ไขวันที่ (date parameter)
+    def update_transaction(self, tid, item, amount, category, payment_id=None, date=None):
+        if date:
+             self.conn.execute("UPDATE transactions SET item=?, amount=?, category=?, payment_id=?, date=? WHERE id=?", (item, amount, category, payment_id, date, tid))
+        else:
+             self.conn.execute("UPDATE transactions SET item=?, amount=?, category=?, payment_id=? WHERE id=?", (item, amount, category, payment_id, tid))
+        
         self.conn.commit()
-        if old_row:
-             dt = parse_db_date(old_row[0])
+        
+        # คำนวณยอดยกมาใหม่ โดยใช้วันที่ของรายการนั้น
+        current_date_row = self.conn.execute("SELECT date FROM transactions WHERE id=?", (tid,)).fetchone()
+        if current_date_row:
+             dt = parse_db_date(current_date_row[0])
              self.recalculate_rollovers_from(dt)
 
     def delete_transaction(self, tid):
@@ -172,13 +179,10 @@ class DatabaseManager:
         c = self.conn.execute("SELECT count(*) FROM transactions WHERE item=? AND amount=? AND category=? AND strftime('%Y-%m', date)=?", (item, amount, category, month_str)).fetchone()[0]
         return c > 0
     
+    # [UPDATED] เอาเงื่อนไข payment_id ออก เพื่อให้ยืดหยุ่น (จ่ายด้วยอะไรก็ถือว่าจ่ายแล้ว)
     def is_recurring_paid_v2(self, item, amount, category, month_str, payment_id):
-        if payment_id is None:
-             query = "SELECT count(*) FROM transactions WHERE item=? AND amount=? AND category=? AND strftime('%Y-%m', date)=? AND payment_id IS NULL"
-             args = (item, amount, category, month_str)
-        else:
-             query = "SELECT count(*) FROM transactions WHERE item=? AND amount=? AND category=? AND strftime('%Y-%m', date)=? AND payment_id=?"
-             args = (item, amount, category, month_str, payment_id)
+        query = "SELECT count(*) FROM transactions WHERE item=? AND amount=? AND category=? AND strftime('%Y-%m', date)=?"
+        args = (item, amount, category, month_str)
         c = self.conn.execute(query, args).fetchone()[0]
         return c > 0
 
@@ -236,28 +240,21 @@ class DatabaseManager:
         self.conn.execute("DELETE FROM credit_cards")
         self.conn.commit()
 
-    # [FIXED] คำนวณยอดหนี้สะสมแบบตัดยอด (Cumulative) ตามเดือนที่เลือก
     def get_card_usage(self, card_id, month_filter=None):
         query_spent = "SELECT SUM(amount) FROM transactions WHERE payment_id=? AND type='expense'"
         query_repaid = "SELECT SUM(amount) FROM transactions WHERE payment_id=? AND type='repayment'"
         args = [card_id]
         
         if month_filter:
-            # แปลง month_filter (YYYY-MM) ให้เป็นวันที่ตัดยอด (วันแรกของเดือนถัดไป)
-            # เช่น filter="2024-01" -> เอา transactions ที่ date < "2024-02-01"
             try:
                 y, m = map(int, month_filter.split('-'))
-                if m == 12:
-                    ny, nm = y + 1, 1
-                else:
-                    ny, nm = y, m + 1
+                if m == 12: ny, nm = y + 1, 1
+                else: ny, nm = y, m + 1
                 cutoff_date = f"{ny}-{nm:02d}-01"
-                
                 query_spent += " AND date(date) < date(?)"
                 query_repaid += " AND date(date) < date(?)"
                 args.append(cutoff_date)
-            except:
-                pass # ถ้าแปลงวันที่ผิดพลาด ก็ให้ดึงทั้งหมด (Total) แทน
+            except: pass
             
         spent = self.conn.execute(query_spent, tuple(args)).fetchone()[0] or 0.0
         repaid = self.conn.execute(query_repaid, tuple(args)).fetchone()[0] or 0.0
