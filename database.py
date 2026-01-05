@@ -68,7 +68,6 @@ class DatabaseManager:
             self.recalculate_rollovers_from(date)
         return last_id
 
-    # [UPDATED] รองรับการแก้ไขวันที่ (date parameter)
     def update_transaction(self, tid, item, amount, category, payment_id=None, date=None):
         if date:
              self.conn.execute("UPDATE transactions SET item=?, amount=?, category=?, payment_id=?, date=? WHERE id=?", (item, amount, category, payment_id, date, tid))
@@ -77,7 +76,6 @@ class DatabaseManager:
         
         self.conn.commit()
         
-        # คำนวณยอดยกมาใหม่ โดยใช้วันที่ของรายการนั้น
         current_date_row = self.conn.execute("SELECT date FROM transactions WHERE id=?", (tid,)).fetchone()
         if current_date_row:
              dt = parse_db_date(current_date_row[0])
@@ -113,6 +111,18 @@ class DatabaseManager:
             query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY t.date DESC"
         return self.conn.execute(query, tuple(params)).fetchall()
+
+    # [NEW] เพิ่มฟังก์ชันสำหรับค้นหา
+    def search_transactions(self, keyword):
+        query = """
+            SELECT t.id, t.type, t.item, t.amount, t.category, t.date, c.name 
+            FROM transactions t
+            LEFT JOIN credit_cards c ON t.payment_id = c.id
+            WHERE t.item LIKE ? OR t.category LIKE ? OR CAST(t.amount AS TEXT) LIKE ?
+            ORDER BY t.date DESC
+        """
+        kw = f"%{keyword}%"
+        return self.conn.execute(query, (kw, kw, kw)).fetchall()
 
     def get_summary(self, filter_str=None):
         base = """
@@ -179,7 +189,6 @@ class DatabaseManager:
         c = self.conn.execute("SELECT count(*) FROM transactions WHERE item=? AND amount=? AND category=? AND strftime('%Y-%m', date)=?", (item, amount, category, month_str)).fetchone()[0]
         return c > 0
     
-    # [UPDATED] เอาเงื่อนไข payment_id ออก เพื่อให้ยืดหยุ่น (จ่ายด้วยอะไรก็ถือว่าจ่ายแล้ว)
     def is_recurring_paid_v2(self, item, amount, category, month_str, payment_id):
         query = "SELECT count(*) FROM transactions WHERE item=? AND amount=? AND category=? AND strftime('%Y-%m', date)=?"
         args = (item, amount, category, month_str)

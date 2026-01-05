@@ -86,6 +86,9 @@ def main(page: ft.Page):
     current_lang = config.get("lang", "th")
     current_view_mode = start_mode
     cloud_mgr = CloudManager()
+    
+    # [NEW] ตัวแปรสำหรับ Search
+    current_search_query = ""
 
     def T(key): return TRANSLATIONS[current_lang].get(key, key)
     def safe_show_snack(msg, color="green"):
@@ -135,6 +138,30 @@ def main(page: ft.Page):
     
     btn_reset_filter = ft.OutlinedButton("Reset Filter", icon="refresh")
     
+    # [NEW] สร้าง UI สำหรับ Search
+    def clear_search(e):
+        nonlocal current_search_query
+        current_search_query = ""
+        txt_search.value = ""
+        refresh_ui()
+
+    def execute_search(e):
+        nonlocal current_search_query
+        current_search_query = txt_search.value
+        refresh_ui()
+
+    txt_search = ft.TextField(
+        hint_text="Search...",
+        height=35,
+        text_size=12,
+        content_padding=10,
+        width=150,
+        bgcolor=COLOR_SURFACE,
+        border_radius=8,
+        on_submit=execute_search,
+        suffix=ft.IconButton(icon="close", icon_size=14, on_click=clear_search)
+    )
+    
     btn_expense = ft.FloatingActionButton(text=T("expense"), icon="mic", bgcolor=COLOR_BTN_EXPENSE, width=130)
     btn_income = ft.FloatingActionButton(text=T("income"), icon="mic", bgcolor=COLOR_BTN_INCOME, width=130)
     
@@ -150,7 +177,9 @@ def main(page: ft.Page):
         refresh_ui()
 
     cal = CalendarWidget(page, on_date_change, current_font_delta, current_font_weight_str)
-    btn_reset_filter.on_click = lambda e: [cal.reset()]
+    
+    # [MODIFIED] Reset filter ต้องเคลียร์ search ด้วย
+    btn_reset_filter.on_click = lambda e: [cal.reset(), clear_search(None)]
 
     btn_simple_exp = ft.Container(content=ft.Row([ft.Icon("mic", size=24, color="white"), ft.Text(T("expense"), size=16, weight="bold", color="white")], alignment="center", spacing=5), bgcolor=COLOR_BTN_EXPENSE, border_radius=15, height=60, expand=True, ink=True, on_click=lambda e: start_listen(e, "expense"))
     btn_simple_inc = ft.Container(content=ft.Row([ft.Icon("mic", size=24, color="white"), ft.Text(T("income"), size=16, weight="bold", color="white")], alignment="center", spacing=5), bgcolor=COLOR_BTN_INCOME, border_radius=15, height=60, expand=True, ink=True, on_click=lambda e: start_listen(e, "income"))
@@ -312,7 +341,15 @@ def main(page: ft.Page):
         else: 
             cards_row.visible = False
         
-        rows = current_db.get_transactions(current_filter_date, month_filter=current_month_str)
+        # [MODIFIED] ตรรกะการดึงข้อมูล (Search vs Normal)
+        rows = []
+        if current_search_query:
+            rows = current_db.search_transactions(current_search_query)
+            txt_heading_recent.value = f"Search: '{current_search_query}' ({len(rows)})"
+            cards_row.visible = False 
+        else:
+            cards_row.visible = True if current_db.get_cards() else False
+            rows = current_db.get_transactions(current_filter_date, month_filter=current_month_str)
         
         d_font_delta, d_font_weight = get_font_specs()
 
@@ -697,7 +734,14 @@ def main(page: ft.Page):
             summary_section, 
             cards_row, 
             ft.Divider(color="transparent"),
-            ft.Row([txt_heading_recent, ft.OutlinedButton("Chart", icon="bar_chart", on_click=open_top10_dialog)], alignment="spaceBetween"),
+            # [MODIFIED] จัด Layout Header ให้มี Search Bar
+            ft.Row([
+                txt_heading_recent, 
+                ft.Row([
+                    txt_search, 
+                    ft.OutlinedButton("Chart", icon="bar_chart", on_click=open_top10_dialog)
+                ], spacing=10)
+            ], alignment="spaceBetween"),
             trans_list_view
         ]))
         

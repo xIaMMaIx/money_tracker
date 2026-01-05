@@ -7,7 +7,7 @@ import webbrowser
 
 # --- ตั้งค่า ---
 SCRIPT_TO_RUN = "mainweb.py"
-PORT = 8080
+PORT = 8888
 APP_NAME = "Money Tracker"
 
 server_process = None

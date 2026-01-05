@@ -63,6 +63,9 @@ def main(page: ft.Page):
     current_filter_date = None
     current_lang = config.get("lang", "th")
     cloud_mgr = CloudManager()
+    
+    # [NEW] ตัวแปรสำหรับเก็บคำค้นหา
+    current_search_query = ""
 
     def T(key): return TRANSLATIONS[current_lang].get(key, key)
     def safe_show_snack(msg, color="green"):
@@ -110,6 +113,30 @@ def main(page: ft.Page):
     
     btn_reset_filter = ft.OutlinedButton("Reset Filter", icon="refresh")
     
+    # [NEW] สร้าง UI สำหรับ Search
+    def clear_search(e):
+        nonlocal current_search_query
+        current_search_query = ""
+        txt_search.value = ""
+        refresh_ui()
+
+    def execute_search(e):
+        nonlocal current_search_query
+        current_search_query = txt_search.value
+        refresh_ui()
+
+    txt_search = ft.TextField(
+        hint_text="Search...",
+        height=35,
+        text_size=12,
+        content_padding=10,
+        width=150,
+        bgcolor=COLOR_SURFACE,
+        border_radius=8,
+        on_submit=execute_search,
+        suffix=ft.IconButton(icon="close", icon_size=14, on_click=clear_search)
+    )
+
     btn_expense = ft.ElevatedButton(
         text=T("expense"), 
         icon="remove", 
@@ -133,12 +160,10 @@ def main(page: ft.Page):
     )
     
     # --- Lists ---
-    # สำหรับ Desktop (Full View)
     trans_list_view = ft.Column(scroll=ft.ScrollMode.ADAPTIVE, expand=True, spacing=5)
     recurring_list_view = ft.Column(spacing=5, scroll="hidden")
     cards_row = ft.ResponsiveRow(spacing=10, run_spacing=10, visible=False)
     
-    # [NEW] สำหรับ Mobile (Simple View)
     mobile_list_view = ft.Column(spacing=2, scroll=ft.ScrollMode.HIDDEN, expand=True)
     txt_mobile_date = ft.Text("Date", size=28, weight="bold", color="white")
     
@@ -148,7 +173,9 @@ def main(page: ft.Page):
         refresh_ui()
 
     cal = CalendarWidget(page, on_date_change, current_font_delta, current_font_weight_str)
-    btn_reset_filter.on_click = lambda e: [cal.reset()]
+    
+    # [MODIFIED] รีเซ็ต filter ต้องเคลียร์ search ด้วย
+    btn_reset_filter.on_click = lambda e: [cal.reset(), clear_search(None)]
 
     # ///////////////////////////////////////////////////////////////
     # [SECTION 5] LOGIC
@@ -192,7 +219,6 @@ def main(page: ft.Page):
             except: txt_heading_recent.value = current_filter_date
         else: txt_heading_recent.value = T("recent_trans")
         
-        # อัปเดตวันที่ใน Simple Mode
         txt_mobile_date.value = datetime.now().strftime("%d %B %Y")
         if current_filter_date:
              try:
@@ -299,7 +325,15 @@ def main(page: ft.Page):
             cards_row.visible = True
         else: cards_row.visible = False
         
-        rows = current_db.get_transactions(current_filter_date, month_filter=current_month_str)
+        # [MODIFIED] ตรรกะการดึงข้อมูล (Search vs Normal)
+        rows = []
+        if current_search_query:
+            rows = current_db.search_transactions(current_search_query)
+            txt_heading_recent.value = f"Search: '{current_search_query}' ({len(rows)})"
+            cards_row.visible = False 
+        else:
+            cards_row.visible = True if current_db.get_cards() else False
+            rows = current_db.get_transactions(current_filter_date, month_filter=current_month_str)
         
         d_font_delta, d_font_weight = get_font_specs()
 
@@ -317,7 +351,7 @@ def main(page: ft.Page):
             card = TransactionCard(r, call_delete, call_edit, d_font_delta, d_font_weight, is_new=False, minimal=False)
             trans_list_view.controls.append(card)
         
-        # 2. Update Mobile List (Simple Mode) [NEW LOGIC]
+        # 2. Update Mobile List (Simple Mode)
         mobile_list_view.controls.clear()
         if not rows:
              empty_content = ft.Container(
@@ -339,15 +373,12 @@ def main(page: ft.Page):
              )
              mobile_list_view.controls.append(empty_content)
         else:
-             # แสดงรายการแบบ Minimal เหมือน Desktop App
              for r in rows:
                  card = TransactionCard(r, call_delete, call_edit, d_font_delta, d_font_weight, minimal=True)
                  mobile_list_view.controls.append(card)
 
         update_recurring_list()
-        
-        try:
-            page.update()
+        try: page.update()
         except: pass
 
     def update_recurring_list():
@@ -537,15 +568,12 @@ def main(page: ft.Page):
     # [SECTION 7] BUILD & RUN
     # ///////////////////////////////////////////////////////////////
     
-    # [NEW] Mobile View (Simple Mode Layout like Desktop)
     def build_mobile_view():
-        # Header: Date and Config
         header = ft.Container(
             content=ft.Row([txt_mobile_date, btn_settings], alignment="spaceBetween", vertical_alignment="center"), 
             padding=ft.padding.only(top=10, bottom=15)
         )
         
-        # Body: Transaction List (Minimal Style)
         body = ft.Container(
             content=mobile_list_view, 
             expand=True, 
@@ -554,7 +582,6 @@ def main(page: ft.Page):
             padding=10
         )
         
-        # Buttons for Footer
         btn_simple_inc = ft.Container(
             content=ft.Row([ft.Icon("add_circle", size=24, color="white"), ft.Text(T("income"), size=16, weight="bold", color="white")], alignment="center", spacing=5), 
             bgcolor=COLOR_BTN_INCOME, border_radius=15, height=60, expand=True, ink=True, 
@@ -572,7 +599,6 @@ def main(page: ft.Page):
             padding=ft.padding.only(top=10, bottom=5)
         )
 
-        # Assemble like Desktop Simple Mode
         return ft.Container(
             content=ft.Column([header, body, footer], spacing=0), 
             padding=10, 
@@ -599,7 +625,14 @@ def main(page: ft.Page):
             summary_section, 
             cards_row, 
             ft.Divider(color="transparent"),
-            ft.Row([txt_heading_recent, ft.OutlinedButton("Chart", icon="bar_chart", on_click=open_top10_dialog)], alignment="spaceBetween"),
+            # [MODIFIED] จัด Layout Header ให้มี Search Bar เหมือน Desktop
+            ft.Row([
+                txt_heading_recent, 
+                ft.Row([
+                    txt_search, 
+                    ft.OutlinedButton("Chart", icon="bar_chart", on_click=open_top10_dialog)
+                ], spacing=10)
+            ], alignment="spaceBetween"),
             ft.Container(content=trans_list_view, expand=True) 
         ], expand=True)) 
         
