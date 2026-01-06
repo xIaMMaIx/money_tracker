@@ -6,7 +6,7 @@
 import flet as ft
 import threading
 from const import *
-from utils import HAS_GSPREAD, save_config
+from utils import HAS_GSPREAD, save_config, GSPREAD_ERROR
 from ui_components import CreditCardWidget
 
 # ///////////////////////////////////////////////////////////////
@@ -191,10 +191,10 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
 
     def run_cloud_task(task_type):
         if not HAS_GSPREAD: 
-            txt_cloud_status.value = T("msg_lib_missing")
+            txt_cloud_status.value = f"Err: {GSPREAD_ERROR}" 
             txt_cloud_status.color = "red"
             page.update()
-            return
+            return            
             
         txt_cloud_status.value = T("msg_processing")
         txt_cloud_status.color = "blue"
@@ -257,30 +257,49 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
                 # CASE 3: PULL (Cloud -> Local)
                 # ---------------------------------------------------------
                 elif task_type == "pull":
-                    # A. Transactions
+                    # [FIX: STEP 1] ดึงข้อมูลบัตรเครดิตก่อน เพื่อสร้าง Map (Name -> ID)
+                    all_c = ws_cards.get_all_values()
+                    current_db.clear_all_cards()
+                    card_map = {} # เก็บ map ชื่อ -> id เช่น {'TTB': 1, 'Shopee': 2}
+                    
+                    if len(all_c) > 1:
+                        for row in all_c[1:]:
+                            try:
+                                # Row: ID, Name, Limit, ClosingDay, Color
+                                cid = int(row[0])
+                                name = row[1].strip() # ตัดช่องว่าง
+                                limit = float(row[2])
+                                close_d = int(row[3])
+                                color = row[4]
+                                current_db.add_card(name, limit, close_d, color, force_id=cid)
+                                card_map[name] = cid # บันทึกเข้า Map
+                            except: pass
+
+                    # [FIX: STEP 2] ดึง Transactions และแปลงชื่อบัตรเป็น ID
                     all_t = ws_trans.get_all_values()
                     current_db.clear_all_transactions()
                     if len(all_t) > 1:
                         for row in all_t[1:]:
                             try:
                                 if len(row) < 6: continue
-                                t_type = row[1]; item = row[2]; 
+                                t_type = row[1]
+                                item = row[2] 
                                 amt = float(str(row[3]).replace(",", ""))
-                                cat = row[4]; dt = row[5]
-                                pid = int(row[6]) if len(row) > 6 and row[6] not in ["None", ""] else None
+                                cat = row[4]
+                                dt = row[5]
+                                
+                                # --- Logic จัดการ Payment ID (ชื่อ -> ID) ---
+                                pid = None
+                                if len(row) > 6:
+                                    raw_val = row[6].strip()
+                                    if raw_val and raw_val != "None":
+                                        # ถ้าใน Sheet เป็นชื่อบัตร (เช่น TTB) ให้หา ID จาก Map
+                                        pid = card_map.get(raw_val)
+                                
                                 current_db.add_transaction(t_type, item, amt, cat, dt, pid)
-                            except: pass
-                    
-                    # B. Credit Cards
-                    all_c = ws_cards.get_all_values()
-                    current_db.clear_all_cards()
-                    if len(all_c) > 1:
-                        for row in all_c[1:]:
-                            try:
-                                cid = int(row[0]); name = row[1]; limit = float(row[2])
-                                close_d = int(row[3]); color = row[4]
-                                current_db.add_card(name, limit, close_d, color, force_id=cid)
-                            except: pass
+                            except Exception as ex: 
+                                print(f"Import Trans Error: {ex}")
+                                pass
 
                     # C. Categories
                     all_cat = ws_cats.get_all_values()
@@ -296,22 +315,36 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
                                 current_db.add_category(name, c_type, kw, force_id=cid)
                             except: pass
 
-                    # D. Recurring
+                    # [FIX: STEP 3] Recurring (จัดการได้ทั้ง ID และ ชื่อ)
                     all_rec = ws_rec.get_all_values()
                     if len(all_rec) > 1:
                         current_db.clear_all_recurring()
                         for row in all_rec[1:]:
                             try:
-                                # Row format: ID, Day, Item, Amount, Category, PaymentID, AutoPay
+                                # Row: ID, Day, Item, Amount, Category, PaymentID, AutoPay
                                 rid = int(row[0])
                                 day = int(row[1])
                                 item = row[2]
                                 amt = float(str(row[3]).replace(",", ""))
                                 cat = row[4]
-                                pid = int(row[5]) if len(row) > 5 and row[5] not in ["None", ""] else None
+                                
+                                # --- Logic จัดการ Payment ID (ฉลาดขึ้น) ---
+                                pid = None
+                                if len(row) > 5:
+                                    raw_val = str(row[5]).strip()
+                                    if raw_val and raw_val != "None":
+                                        # ถ้าเป็นตัวเลข (เช่น "1") ให้ใช้เลย
+                                        if raw_val.isdigit():
+                                            pid = int(raw_val)
+                                        # ถ้าเป็นชื่อ (เผื่ออนาคต) ให้ Map เอา
+                                        else:
+                                            pid = card_map.get(raw_val)
+
                                 auto = int(row[6]) if len(row) > 6 and row[6] not in ["None", ""] else 0
                                 current_db.add_recurring(day, item, amt, cat, payment_id=pid, auto_pay=auto, force_id=rid)
-                            except: pass
+                            except Exception as ex:
+                                print(f"Import Rec Error: {ex}")
+                                pass
                     
                     refresh_ui_callback()
 
@@ -345,12 +378,11 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
 
                 txt_cloud_status.value = f"{T('msg_success')} ({task_type.upper()})"
                 txt_cloud_status.color = "green"
-                
+            
             except Exception as e:
                 def show_err():
                     def close_err(e): page.close(dlg_err); page.open(dlg); page.update()
                     page.close(dlg)
-                    # [MODIFIED] Removed print(e)
                     dlg_err = ft.AlertDialog(title=ft.Text("Error"), content=ft.Text(str(e)), actions=[ft.TextButton("OK", on_click=close_err)], on_dismiss=close_err)
                     page.open(dlg_err); page.update()
                 

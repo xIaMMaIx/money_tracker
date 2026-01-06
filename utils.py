@@ -1,7 +1,35 @@
 # utils.py
+import sys
 import json
 import os
 import re
+from types import ModuleType
+
+# ==============================================================================
+# [FIX] Android Workaround: สร้าง wsgiref ปลอม (ทำงานเฉพาะตอนหาไม่เจอ)
+# ==============================================================================
+try:
+    import wsgiref
+except ImportError:
+    # ถ้า import ไม่ได้ (Android) ให้สร้างของปลอม
+    mock_wsgiref = ModuleType("wsgiref")
+    sys.modules["wsgiref"] = mock_wsgiref
+    
+    mock_util = ModuleType("wsgiref.util")
+    sys.modules["wsgiref.util"] = mock_util
+    mock_wsgiref.util = mock_util
+    
+    mock_server = ModuleType("wsgiref.simple_server")
+    sys.modules["wsgiref.simple_server"] = mock_server
+    mock_wsgiref.simple_server = mock_server
+    
+    class MockHandler: pass
+    def mock_make_server(*args, **kwargs): return None
+
+    mock_server.WSGIRequestHandler = MockHandler
+    mock_server.make_server = mock_make_server
+# ==============================================================================
+
 from datetime import datetime
 from const import CONFIG_FILE, DEFAULT_DB_NAME
 
@@ -13,19 +41,22 @@ try:
 except ImportError:
     pass
 
+# [UPDATED] ตรวจสอบ PyAudio แบบยืดหยุ่น (ใช้ได้ทั้ง PC และ Android)
 HAS_PYAUDIO = False
 try:
     import pyaudio
     HAS_PYAUDIO = True
 except ImportError:
+    # บน Android ไม่มี Library นี้ มันจะเข้า case นี้และทำงานต่อได้โดยไม่มีเสียง
     pass
 
 HAS_GSPREAD = False
+GSPREAD_ERROR = ""
 try:
     import gspread
-    from oauth2client.service_account import ServiceAccountCredentials
     HAS_GSPREAD = True
-except ImportError:
+except Exception as e:
+    GSPREAD_ERROR = str(e)
     pass
 
 # [SECTION: FORMATTERS]
@@ -100,8 +131,7 @@ def parse_thai_money(text):
         pattern = r"(\d+(?:\.\d+)?|" + "|".join(str_keywords) + r")"
         raw_tokens = re.findall(pattern, text)
 
-    # 4. [CRITICAL FIX] Filter Tokens (ลบช่องว่างและ Token เปล่าออกให้หมด)
-    # เพื่อให้ tokens[i+1] คือตัวเลขถัดไปจริงๆ ไม่ใช่ช่องว่าง
+    # 4. Filter Tokens
     tokens = []
     for t in raw_tokens:
         if isinstance(t, str):
@@ -133,11 +163,10 @@ def parse_thai_money(text):
     i = 0
     while i < len(tokens):
         token = tokens[i]
-        
         val = get_token_val(token)
         is_unit = is_unit_token(token)
         
-        # Special check: number acting as unit (e.g. 100)
+        # Special check: number acting as unit
         if val is not None and not is_unit and current_val > 0 and val in [10, 100, 1000, 10000, 100000, 1000000]:
             is_unit = True
 
@@ -157,21 +186,17 @@ def parse_thai_money(text):
                 next_token = tokens[i+1]
                 next_val = get_token_val(next_token)
                 
-                # ถ้าตัวถัดไปเป็นเลข 1-9
                 if next_val is not None and 1 <= next_val <= 9:
                     is_next_unit = False
-                    # เช็คตัวถัดไปอีกที ว่าไม่ใช่หน่วย (เช่น "แสน ห้า หมื่น" -> ห้าคือ 50,000 ไม่ใช่ 5 เฉยๆ)
                     if i + 2 < len(tokens):
                         next_next_token = tokens[i+2]
                         if is_unit_token(next_next_token):
                             is_next_unit = True
                     
                     if not is_next_unit:
-                        # สูตร: ตัวเลข * (หน่วย / 10)
-                        # แสน (100,000) ห้า (5) -> 5 * 10,000 = 50,000
                         colloquial_amt = next_val * (unit_val / 10)
                         total_amount += colloquial_amt
-                        i += 1 # ข้ามตัวถัดไป เพราะคำนวณไปแล้ว
+                        i += 1 
                         
         elif val is not None:
             if current_val > 0: total_amount += current_val
@@ -194,7 +219,6 @@ def parse_thai_money(text):
     return total_amount, item_text
 
 def load_config():
-    # [MODIFIED] Changed default font to "Prompt" and weight to 400
     default = {
         "db_path": DEFAULT_DB_NAME, "width": 400, "height": 700, "lang": "th", 
         "font_family": "Prompt", "font_size": 14, "font_weight": 400,
