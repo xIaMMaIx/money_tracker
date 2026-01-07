@@ -29,14 +29,13 @@ splash_icon = None
 # [SECTION 3] MAIN ENTRY POINT
 # ///////////////////////////////////////////////////////////////
 def main(page: ft.Page):
-    # [DEBUG] ครอบ Try-Except ใหญ่สุดเพื่อกันจอดำ และแสดง Error ถ้ามี
     try:
         real_main(page)
     except Exception as e:
         page.bgcolor = "black"
         page.clean()
         page.add(
-            ft.SafeArea( # ใช้ SafeArea แม้แต่หน้า Error
+            ft.SafeArea(
                 ft.Column([
                     ft.Icon("error", color="red", size=50),
                     ft.Text("CRITICAL ERROR", color="red", size=20, weight="bold"),
@@ -52,13 +51,12 @@ def real_main(page: ft.Page):
     
     # --- Load Config ---
     config = load_config()
-    
-    # [FIXED] ลบ Logic การตัด Path ทิ้งออก เพื่อให้จำไฟล์จากโฟลเดอร์อื่นได้
     current_db_path = config.get("db_path", DEFAULT_DB_NAME)
 
-    # [FIX: FONT] 1. ลงทะเบียนไฟล์ฟอนต์ให้แอปรู้จัก (ต้องทำก่อน set theme)
-    # ต้องมั่นใจว่ามีไฟล์เหล่านี้ในโฟลเดอร์ assets/fonts/
+    # [FONT FIX] ประกาศ Font ให้ครบถ้วน
     page.fonts = {
+        "Prompt": "/fonts/Prompt.ttf",
+        "Kanit": "/fonts/Kanit.ttf",
         "Anuphan": "/fonts/Anuphan.ttf",
         "NotoSansThai": "/fonts/NotoSansThai.ttf",
         "NotoSansThaiLooped": "/fonts/NotoSansThaiLooped.ttf",
@@ -66,22 +64,17 @@ def real_main(page: ft.Page):
         "PlaypenSans": "/fonts/PlaypenSans.ttf"
     }
 
-    # --- Mobile Window Setup ---
     page.bgcolor = COLOR_BG
     page.padding = 0
     page.theme_mode = ft.ThemeMode.DARK
     
-    # [FIX: FONT] 2. เรียกใช้ฟอนต์ที่ลงทะเบียนไว้
-    target_font = config.get("font_family", "NotoSansThaiLooped")
+    target_font = config.get("font_family", "Prompt")
     page.theme = ft.Theme(
         font_family=target_font,
         scrollbar_theme=ft.ScrollbarTheme(thickness=0, thumb_visibility=False, track_visibility=False)
     )
     
-    # Container หลักที่จะเปลี่ยนเนื้อหาข้างใน
     main_container = ft.Container(expand=True)
-    
-    # [FIX: SAFE AREA] ครอบด้วย SafeArea เพื่อกันไม่ให้ทับ Status Bar ด้านบน/ล่าง
     page.add(ft.SafeArea(main_container, expand=True))
 
     # --- Dynamic Theme Helpers ---
@@ -94,21 +87,17 @@ def real_main(page: ft.Page):
     
     # --- State Variables ---
     current_db = None
-    # ใช้ current_db_path ที่โหลดมาตรงๆ (ไม่ว่าจะมาจากไหนก็ตาม)
     db_path = current_db_path 
     current_filter_date = None
     current_lang = config.get("lang", "th")
     cloud_mgr = CloudManager()
     
-    # Search variable
     current_search_query = ""
 
     def T(key): return TRANSLATIONS[current_lang].get(key, key)
     def safe_show_snack(msg, color="green"):
         try: page.open(ft.SnackBar(content=ft.Text(msg), bgcolor=color))
         except: pass
-    
-# ... (ส่วนโค้ดเดิมด้านบน) ...
 
     # ///////////////////////////////////////////////////////////////
     # [SECTION 4] UI COMPONENTS (Mobile Optimized)
@@ -116,39 +105,17 @@ def real_main(page: ft.Page):
     
     # --- 1. App Bar & Navigation ---
     def open_drawer(e):
-        # [FIX] การใช้ page.open(nav_drawer) จะทำงานได้สมบูรณ์บน Android 
-        # ก็ต่อเมื่อ nav_drawer ถูกกำหนดให้ page.drawer แล้ว (ดูด้านล่าง)
         page.open(nav_drawer)
 
-    def close_drawer(e):
-        page.close(nav_drawer)
-
-    # Drawer Items (เมนูข้าง)
-    # [Tip] ย้าย handle_drawer_change มานิยามก่อนเรียกใช้ใน nav_drawer ก็ดี (แต่ Python lambda ช่วยให้ไม่ error)
     def handle_drawer_change(e):
         idx = e.control.selected_index
         page.close(nav_drawer)
-        
-        # Reset selection
         e.control.selected_index = 0
         
-        # [FIXED] แก้ไขลำดับ Index ให้ถูกต้อง (นับเฉพาะ Destination)
-        # 0 = Dashboard
-        # 1 = Recurring
-        # 2 = Top Chart
-        # 3 = Cloud Sync
-        # 4 = Settings
-        
-        if idx == 0: # Dashboard
-            pass 
-        elif idx == 1: # Recurring (แก้จาก 2 เป็น 1)
-            show_recurring_dialog()
-        elif idx == 2: # Chart (แก้จาก 3 เป็น 2)
-            open_top10_dialog(None)
- #      elif idx == 3: # Cloud (แก้จาก 4 เป็น 3)
- #         open_settings_dialog(page, current_db, config, refresh_ui, init_application, cloud_mgr)
-        elif idx == 3: # Settings (แก้จาก 6 เป็น 4)
-            open_settings_dialog(page, current_db, config, refresh_ui, init_application, cloud_mgr)
+        if idx == 0: pass 
+        elif idx == 1: show_recurring_dialog()
+        elif idx == 2: open_top10_dialog(None)
+        elif idx == 3: open_settings_dialog(page, current_db, config, refresh_ui, init_application, cloud_mgr)
             
     nav_drawer = ft.NavigationDrawer(
         controls=[
@@ -163,21 +130,16 @@ def real_main(page: ft.Page):
             ft.Divider(),
             ft.NavigationDrawerDestination(icon="repeat", label=T("recurring")),
             ft.NavigationDrawerDestination(icon="pie_chart", label=T("top_chart")),
- #          ft.NavigationDrawerDestination(icon="cloud_sync", label="Cloud Sync"),
             ft.Divider(),
             ft.NavigationDrawerDestination(icon="settings", label=T("settings")),
         ],
         on_change=lambda e: handle_drawer_change(e)
     )
-
-    # ต้องกำหนด drawer ให้กับ page เพื่อให้ Android รู้จัก Scaffolding ของ Drawer
     page.drawer = nav_drawer 
-
 
     # --- 2. Date & Calendar Header ---
     txt_month_header = ft.Text("Month", size=18, weight="bold")
     
-    # Calendar Wrapper (Dialog)
     def show_calendar_dialog(e):
         cal_container = ft.Container(padding=10, bgcolor=COLOR_SURFACE, border_radius=10)
         cal.width = 300 
@@ -205,38 +167,107 @@ def real_main(page: ft.Page):
         on_click=show_calendar_dialog
     )
 
-    # --- 3. Summary Cards (Horizontal Scroll) ---
-    summary_font_delta = current_font_delta - 4 
+    # --- 3. Main Header (Compact Balance) ---
+    txt_main_balance = ft.Text("฿ 0.00", size=36, weight="bold", color="white")
     
-    card_bal = SummaryCard("balance", "0.00", COLOR_PRIMARY, "account_balance_wallet", summary_font_delta, current_font_weight_str)
+    txt_budget_value = ft.Text("- / -", color="white54", size=10)
+    pb_budget = ft.ProgressBar(value=0, color=COLOR_PRIMARY, bgcolor="white10", height=4, border_radius=2)
+    
+    # Dashboard Button (Popup Trigger)
+    def open_dashboard_popup(e):
+        # คำนวณขนาดเป็น % จากหน้าจอ
+        screen_w = page.width
+        screen_h = page.height
+        
+        popup_width = screen_w 
+        popup_height = screen_h 
+
+        for c in [card_inc, card_exp, card_net]:
+            c.height = 70       
+            c.width = None      
+            c.expand = False    
+            c.padding = 10 
+
+        # 1. Credit Cards Content
+        cards_content = ft.Column(spacing=10)
+        cards_db = current_db.get_cards()
+        if cards_db:
+             month_str = f"{cal.year}-{cal.month:02d}"
+             for c in cards_db:
+                 usage = current_db.get_card_usage(c[0], month_str)
+                 mc = MiniCardWidget(
+                    c, 
+                    lambda d: [page.close(dlg_dash), dialogs.open_pay_card_dialog(page, current_db, config, refresh_ui, d, current_filter_date)],
+                    lambda d: [page.close(dlg_dash), dialogs.open_card_history_dialog(page, current_db, config, refresh_ui, d, cal.year, cal.month)],
+                    usage, 
+                    col=None, show_balance=True
+                 )
+                 mc.height = 80
+                 cards_content.controls.append(mc)
+        else:
+            cards_content.controls.append(ft.Text("No credit cards", color="grey"))
+
+        dlg_content = ft.Container(
+            content=ft.Column([
+                ft.Text(T("overview"), size=20, weight="bold"),
+                ft.Divider(),
+                card_inc,           # รายรับ
+                ft.Container(height=2),
+                card_exp,           # รายจ่าย
+                ft.Container(height=2),
+                card_net,           # มั่งคั่ง
+                ft.Container(height=10),
+                ft.Divider(),
+                ft.Text(T("credit_cards"), size=16, weight="bold"),
+                cards_content
+            ], scroll=ft.ScrollMode.AUTO),
+            padding=15,
+            width=popup_width,
+            height=popup_height,
+        )
+        
+        dlg_dash = ft.AlertDialog(
+            content=dlg_content,
+            content_padding=0,
+            actions=[ft.TextButton(T("close"), on_click=lambda _: page.close(dlg_dash))]
+        )
+        page.open(dlg_dash)
+
+    btn_open_dashboard = ft.Container(
+        content=ft.Row([
+            ft.Icon("dashboard", size=16, color=COLOR_PRIMARY),
+            ft.Text(T("overview") + " / Cards", color=COLOR_PRIMARY, weight="bold")
+        ], alignment="center", spacing=5),
+        padding=10,
+        border=ft.border.all(1, COLOR_PRIMARY),
+        border_radius=10,
+        ink=True,
+        on_click=open_dashboard_popup
+    )
+
+    compact_header = ft.Container(
+        content=ft.Column([
+            ft.Text(T("balance"), size=12, color="grey"),
+            txt_main_balance,
+            ft.Container(height=5),
+            ft.Row([ft.Text(T("budget"), size=10, color="grey"), txt_budget_value], alignment="spaceBetween"),
+            pb_budget,
+            ft.Container(height=10),
+            btn_open_dashboard
+        ], spacing=2, horizontal_alignment="center"),
+        padding=20,
+        bgcolor=COLOR_SURFACE,
+        border_radius=ft.border_radius.only(bottom_left=25, bottom_right=25),
+        shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLACK54, offset=ft.Offset(0, 5))
+    )
+
+    # --- 4. Summary Cards (Hidden Variables) ---
+    summary_font_delta = current_font_delta - 4 
     card_inc = SummaryCard("income", "+0.00", COLOR_INCOME, "arrow_upward", summary_font_delta, current_font_weight_str)
     card_exp = SummaryCard("expense", "-0.00", COLOR_EXPENSE, "arrow_downward", summary_font_delta, current_font_weight_str)
     card_net = SummaryCard("Net Worth", "0.00", "cyan", "monetization_on", summary_font_delta, current_font_weight_str)
     
-    for c in [card_bal, card_inc, card_exp, card_net]:
-        c.width = 160 
-        c.height = 100
-        c.padding = 15
-
-    # [FIX] เรียงลำดับการ์ดใหม่ตามที่ขอ (รายรับ -> รายจ่าย -> คงเหลือ -> มั่งคั่ง)
-    summary_row = ft.Row(
-        [card_inc, card_exp, card_bal, card_net], 
-        scroll=ft.ScrollMode.HIDDEN, 
-        spacing=10
-    )
-
-    # --- 4. Budget Bar ---
-    txt_budget_value = ft.Text("- / -", color="white", size=12)
-    pb_budget = ft.ProgressBar(value=0, color=COLOR_PRIMARY, bgcolor=COLOR_SURFACE, height=8, border_radius=4)
-    budget_container = ft.Column([
-        ft.Row([ft.Text(T("budget"), size=12, color="grey"), txt_budget_value], alignment="spaceBetween"),
-        pb_budget
-    ], spacing=5)
-
-    # --- 5. Credit Cards (Horizontal Scroll) ---
-    cards_row = ft.Row(scroll=ft.ScrollMode.HIDDEN, spacing=10, visible=False)
-
-    # --- 6. Transactions List ---
+    # --- 5. Transactions List ---
     txt_heading_recent = ft.Text(T("recent_trans"), size=16, weight="bold")
     trans_list_view = ft.Column(spacing=2) 
     
@@ -270,7 +301,7 @@ def real_main(page: ft.Page):
 
     btn_search_icon = ft.IconButton("search", on_click=toggle_search)
 
-    # --- 7. Bottom Action Buttons (Sticky) ---
+    # --- 6. Bottom Action Buttons ---
     btn_expense = ft.Container(
         content=ft.Row([ft.Icon("remove_circle_outline", size=24, color="white"), ft.Text(T("expense"), size=16, weight="bold", color="white")], alignment="center", spacing=5),
         bgcolor=COLOR_BTN_EXPENSE, border_radius=15, height=55, expand=True, ink=True
@@ -305,13 +336,25 @@ def real_main(page: ft.Page):
 
         card_inc.txt_title.value = T("income")
         card_exp.txt_title.value = T("expense")
-        card_bal.txt_title.value = T("balance")
         card_net.txt_title.value = "Net Worth" if current_lang == "en" else "ความมั่งคั่งสุทธิ"
         
-        for c in [card_bal, card_inc, card_exp, card_net]:
+        for c in [card_inc, card_exp, card_net]:
             c.update_style(summary_font_delta, current_font_weight_str)
 
         cal.update_style(current_font_delta, current_font_weight_str)
+
+        # -----------------------------------------------------------
+        # [จุดที่ต้องเพิ่ม] ปรับน้ำหนัก Font ยอดเงินคงเหลือ (+200)
+        # -----------------------------------------------------------
+        try:
+            # ดึงค่าตัวเลขจาก string เช่น "w600" -> 600
+            base_w = int(current_font_weight_str.replace("w", ""))
+            # บวกเพิ่ม 200 แต่ห้ามเกิน 900
+            bal_w = min(base_w + 100, 900)
+            txt_main_balance.weight = f"w{bal_w}"
+        except:
+            txt_main_balance.weight = "bold"
+        # -----------------------------------------------------------
 
         if current_filter_date:
             try:
@@ -324,6 +367,7 @@ def real_main(page: ft.Page):
         
         btn_expense.content.controls[1].value = T("expense")
         btn_income.content.controls[1].value = T("income")
+        btn_open_dashboard.content.controls[1].value = T("overview") + " / Cards"
         
         page.update()
 
@@ -361,9 +405,6 @@ def real_main(page: ft.Page):
         is_date_selected = (current_filter_date is not None)
         enable_buttons = is_current_month or is_date_selected
         
-        # Net Worth ซ่อนเมื่อดูเดือนเก่า
-        card_net.visible = is_current_month
-        
         bg_exp = COLOR_BTN_EXPENSE if enable_buttons else "grey"
         bg_inc = COLOR_BTN_INCOME if enable_buttons else "grey"
         
@@ -388,9 +429,11 @@ def real_main(page: ft.Page):
 
         card_inc.txt_value.value = f"+{format_currency(inc)}"
         card_exp.txt_value.value = f"-{format_currency(exp)}"
-        card_bal.txt_value.value = f"{format_currency(bal)}"
         card_net.txt_value.value = f"{format_currency(net_worth)}"
         card_net.txt_value.color = COLOR_INCOME if net_worth >= 0 else COLOR_EXPENSE
+        
+        txt_main_balance.value = f"{format_currency(bal)}"
+        txt_main_balance.color = COLOR_PRIMARY if bal >= 0 else COLOR_EXPENSE
         
         try: limit = float(current_db.get_setting("budget", "10000"))
         except: limit = 10000.0
@@ -400,37 +443,11 @@ def real_main(page: ft.Page):
         pb_budget.color = COLOR_PRIMARY if ratio < 0.5 else ("orange" if ratio < 0.8 else COLOR_EXPENSE)
         txt_budget_value.value = f"{format_currency(mon_exp)} / {format_currency(limit)}"
         
-        cards_row.controls.clear()
-        if cards_db:
-            # ไม่ต้องใช้ dynamic_col สำหรับ Android เพราะเราใช้ Row แนวนอน
-            for c in cards_db: 
-                usage_cumulative = current_db.get_card_usage(c[0], current_month_str)
-                
-                # สร้าง Widget
-                mc = MiniCardWidget(
-                    c, 
-                    lambda d: dialogs.open_pay_card_dialog(page, current_db, config, refresh_ui, d, current_filter_date),
-                    lambda d: dialogs.open_card_history_dialog(page, current_db, config, refresh_ui, d, cal.year, cal.month),
-                    usage_cumulative, 
-                    col=None,          # Android ไม่ต้องใช้ col
-                    show_balance=False # Android ไม่โชว์ยอดคงเหลือ
-                )
-                
-                # [FIX IMPORTANT] ต้องกำหนดความกว้าง ไม่งั้นมันจะหดหายไปใน Row แนวนอน
-                mc.width = 170 
-                
-                cards_row.controls.append(mc)
-            cards_row.visible = True
-        else: 
-            cards_row.visible = False
-        
         rows = []
         if current_search_query:
             rows = current_db.search_transactions(current_search_query)
             txt_heading_recent.value = f"Search: '{current_search_query}' ({len(rows)})"
-            cards_row.visible = False 
         else:
-            cards_row.visible = True if current_db.get_cards() else False
             rows = current_db.get_transactions(current_filter_date, month_filter=current_month_str)
         
         d_font_delta, d_font_weight = get_font_specs()
@@ -495,7 +512,6 @@ def real_main(page: ft.Page):
             recs = current_db.get_recurring()
             if not recs:
                 rec_col.controls.append(ft.Text(T("no_items"), color="grey"))
-                # [FIX] เช็คก่อนว่า control ถูกเพิ่มลง page หรือยัง
                 if rec_col.page:
                     rec_col.update()
                 return
@@ -532,7 +548,6 @@ def real_main(page: ft.Page):
                  )
                  rec_col.controls.append(row)
             
-            # [FIX] เช็คก่อนว่า control ถูกเพิ่มลง page หรือยัง ก่อนสั่ง update
             if rec_col.page:
                 rec_col.update()
 
@@ -611,9 +626,6 @@ def real_main(page: ft.Page):
         )
         page.open(dlg)
 
-    btn_expense.on_click = lambda e: open_manual_add(e, "expense")
-    btn_income.on_click = lambda e: open_manual_add(e, "income")
-
     # ///////////////////////////////////////////////////////////////
     # [SECTION 8] VIEW BUILDERS (Mobile Layout)
     # ///////////////////////////////////////////////////////////////
@@ -629,14 +641,10 @@ def real_main(page: ft.Page):
         )
 
         content_scroll = ft.Column([
-            ft.Container(height=10),
-            summary_row, 
-            ft.Container(content=budget_container, padding=ft.padding.symmetric(horizontal=15)),
-            ft.Container(height=10),
-            cards_row, 
+            compact_header,
             ft.Container(
                 content=ft.Row([txt_heading_recent], alignment="spaceBetween"),
-                padding=ft.padding.symmetric(horizontal=15, vertical=5)
+                padding=ft.padding.only(left=15, right=15, top=20, bottom=5)
             ),
             ft.Container(content=trans_list_view, padding=ft.padding.symmetric(horizontal=15)),
             ft.Container(height=80) 
@@ -666,7 +674,13 @@ def real_main(page: ft.Page):
     def init_application(selected_path):
         nonlocal current_db
         time.sleep(0.5)
-        current_db = DatabaseManager(selected_path); current_db.connect(); config["db_path"] = selected_path; save_config(config)
+        
+        # [NEW LOGIC] บังคับบันทึก path ลง config เสมอ เพื่อให้ครั้งหน้าใช้ path นี้ได้เลย (ถ้ามี)
+        config["db_path"] = selected_path
+        save_config(config)
+        
+        current_db = DatabaseManager(selected_path)
+        current_db.connect()
         cal.set_db(current_db)
         
         main_container.content = build_mobile_view()
@@ -674,23 +688,22 @@ def real_main(page: ft.Page):
         main_container.update()
 
     def check_startup():
-        # [FIX] ไม่มีการเล่นกับ page.window.opacity แล้ว
         main_container.content = build_splash_view()
         page.update()
         time.sleep(1.0) 
 
-        if os.path.exists(db_path): init_application(db_path)
-        else:
-            dlg = ft.AlertDialog(modal=True, title=ft.Text("Database Not Found"))
-            def on_file_picked(e):
-                if e.files: dlg.open = False; page.update(); init_application(e.files[0].path)
-            pick_dialog = ft.FilePicker(on_result=on_file_picked); page.overlay.append(pick_dialog)
-            def create_new(e): dlg.open = False; page.update(); init_application(DEFAULT_DB_NAME)
-            dlg.content = ft.Text(f"Could not find: {db_path}"); dlg.actions = [ft.TextButton("Create New", on_click=create_new), ft.TextButton("Browse...", on_click=lambda _: pick_dialog.pick_files(allowed_extensions=["db"]))]; page.open(dlg)
+        # [NEW LOGIC] ตรวจสอบ Database โดยไม่ถาม User
+        target_db = db_path # ค่าจาก config
+        if not os.path.exists(target_db):
+            # ถ้าหาไม่เจอ (เช่น เป็น path บน PC หรือเพิ่งลงแอพใหม่) ให้ใช้ค่า Default ทันที
+            # DatabaseManager จะสร้างไฟล์ modern_money.db ให้อัตโนมัติถ้าไม่มี
+            target_db = DEFAULT_DB_NAME
+        
+        # เรียกใช้งานทันที (ตัด FilePicker และ Dialog ออก)
+        init_application(target_db)
 
     def start_auto_sync():
         def sync_loop():
-            # [FIX] Try-Catch เพื่อป้องกัน Thread พังเงียบๆ
             try:
                 current_conf = load_config()
                 target_path = current_conf.get("db_path", "modern_money.db")
@@ -713,8 +726,6 @@ def real_main(page: ft.Page):
 
                             if current_mtime != last_mtime:
                                 last_mtime = current_mtime
-                                # [WARNING] การเรียก refresh_ui จาก Thread อาจไม่ปลอดภัยในบางครั้ง
-                                # แต่ถ้า page object ยังอยู่ก็พอได้ (ใช้ try กันไว้)
                                 try: refresh_ui()
                                 except: pass
                     except: pass
