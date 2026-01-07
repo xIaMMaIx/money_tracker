@@ -335,7 +335,8 @@ def main(page: ft.Page):
                     lambda d: dialogs.open_pay_card_dialog(page, current_db, config, refresh_ui, d, current_filter_date),
                     lambda d: dialogs.open_card_history_dialog(page, current_db, config, refresh_ui, d, cal.year, cal.month),
                     usage_cumulative, 
-                    col=dynamic_col
+                    col=dynamic_col,
+                    show_balance=True 
                 ))
             cards_row.visible = True
         else: 

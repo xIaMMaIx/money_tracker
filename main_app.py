@@ -1,4 +1,4 @@
-# main.py
+# main_app.py
 
 # ///////////////////////////////////////////////////////////////
 # [SECTION 1] IMPORTS & CONFIG
@@ -53,20 +53,28 @@ def real_main(page: ft.Page):
     # --- Load Config ---
     config = load_config()
     
-    # [FIX] แก้บั๊ก Path Windows (C:\...) ติดมาในมือถือ
+    # [FIXED] ลบ Logic การตัด Path ทิ้งออก เพื่อให้จำไฟล์จากโฟลเดอร์อื่นได้
     current_db_path = config.get("db_path", DEFAULT_DB_NAME)
-    if ":" in current_db_path or "\\" in current_db_path or "/" in current_db_path:
-        current_db_path = os.path.basename(current_db_path)
-        if not current_db_path: current_db_path = DEFAULT_DB_NAME
-        config["db_path"] = current_db_path
-        save_config(config)
+
+    # [FIX: FONT] 1. ลงทะเบียนไฟล์ฟอนต์ให้แอปรู้จัก (ต้องทำก่อน set theme)
+    # ต้องมั่นใจว่ามีไฟล์เหล่านี้ในโฟลเดอร์ assets/fonts/
+    page.fonts = {
+        "Anuphan": "/fonts/Anuphan.ttf",
+        "NotoSansThai": "/fonts/NotoSansThai.ttf",
+        "NotoSansThaiLooped": "/fonts/NotoSansThaiLooped.ttf",
+        "NotoSerifThai": "/fonts/NotoSerifThai.ttf",
+        "PlaypenSans": "/fonts/PlaypenSans.ttf"
+    }
 
     # --- Mobile Window Setup ---
     page.bgcolor = COLOR_BG
     page.padding = 0
     page.theme_mode = ft.ThemeMode.DARK
+    
+    # [FIX: FONT] 2. เรียกใช้ฟอนต์ที่ลงทะเบียนไว้
+    target_font = config.get("font_family", "NotoSansThaiLooped")
     page.theme = ft.Theme(
-        font_family=config.get("font_family", "Kanit"),
+        font_family=target_font,
         scrollbar_theme=ft.ScrollbarTheme(thickness=0, thumb_visibility=False, track_visibility=False)
     )
     
@@ -86,7 +94,8 @@ def real_main(page: ft.Page):
     
     # --- State Variables ---
     current_db = None
-    db_path = config.get("db_path", DEFAULT_DB_NAME)
+    # ใช้ current_db_path ที่โหลดมาตรงๆ (ไม่ว่าจะมาจากไหนก็ตาม)
+    db_path = current_db_path 
     current_filter_date = None
     current_lang = config.get("lang", "th")
     cloud_mgr = CloudManager()
@@ -99,18 +108,48 @@ def real_main(page: ft.Page):
         try: page.open(ft.SnackBar(content=ft.Text(msg), bgcolor=color))
         except: pass
     
+# ... (ส่วนโค้ดเดิมด้านบน) ...
+
     # ///////////////////////////////////////////////////////////////
     # [SECTION 4] UI COMPONENTS (Mobile Optimized)
     # ///////////////////////////////////////////////////////////////
     
     # --- 1. App Bar & Navigation ---
     def open_drawer(e):
+        # [FIX] การใช้ page.open(nav_drawer) จะทำงานได้สมบูรณ์บน Android 
+        # ก็ต่อเมื่อ nav_drawer ถูกกำหนดให้ page.drawer แล้ว (ดูด้านล่าง)
         page.open(nav_drawer)
 
     def close_drawer(e):
         page.close(nav_drawer)
 
     # Drawer Items (เมนูข้าง)
+    # [Tip] ย้าย handle_drawer_change มานิยามก่อนเรียกใช้ใน nav_drawer ก็ดี (แต่ Python lambda ช่วยให้ไม่ error)
+    def handle_drawer_change(e):
+        idx = e.control.selected_index
+        page.close(nav_drawer)
+        
+        # Reset selection
+        e.control.selected_index = 0
+        
+        # [FIXED] แก้ไขลำดับ Index ให้ถูกต้อง (นับเฉพาะ Destination)
+        # 0 = Dashboard
+        # 1 = Recurring
+        # 2 = Top Chart
+        # 3 = Cloud Sync
+        # 4 = Settings
+        
+        if idx == 0: # Dashboard
+            pass 
+        elif idx == 1: # Recurring (แก้จาก 2 เป็น 1)
+            show_recurring_dialog()
+        elif idx == 2: # Chart (แก้จาก 3 เป็น 2)
+            open_top10_dialog(None)
+ #      elif idx == 3: # Cloud (แก้จาก 4 เป็น 3)
+ #         open_settings_dialog(page, current_db, config, refresh_ui, init_application, cloud_mgr)
+        elif idx == 3: # Settings (แก้จาก 6 เป็น 4)
+            open_settings_dialog(page, current_db, config, refresh_ui, init_application, cloud_mgr)
+            
     nav_drawer = ft.NavigationDrawer(
         controls=[
             ft.Container(
@@ -124,32 +163,16 @@ def real_main(page: ft.Page):
             ft.Divider(),
             ft.NavigationDrawerDestination(icon="repeat", label=T("recurring")),
             ft.NavigationDrawerDestination(icon="pie_chart", label=T("top_chart")),
-            ft.NavigationDrawerDestination(icon="cloud_sync", label="Cloud Sync"),
+ #          ft.NavigationDrawerDestination(icon="cloud_sync", label="Cloud Sync"),
             ft.Divider(),
             ft.NavigationDrawerDestination(icon="settings", label=T("settings")),
         ],
         on_change=lambda e: handle_drawer_change(e)
     )
 
-    def handle_drawer_change(e):
-        idx = e.control.selected_index
-        page.close(nav_drawer)
-        
-        # Reset selection (optional)
-        e.control.selected_index = 0
-        
-        # [FIXED] แก้เลข index ให้เรียงตามลำดับเมนูจริง (ไม่นับ Divider)
-        if idx == 0: # Dashboard
-            pass 
-        elif idx == 1: # Recurring (เดิมเป็น 2)
-            show_recurring_dialog()
-        elif idx == 2: # Chart (เดิมเป็น 3)
-            open_top10_dialog(None)
-        elif idx == 3: # Cloud (เดิมเป็น 4)
-            # เปิด Tab cloud ใน Settings
-            open_settings_dialog(page, current_db, config, refresh_ui, init_application, cloud_mgr)
-        elif idx == 4: # Settings (เดิมเป็น 6)
-            open_settings_dialog(page, current_db, config, refresh_ui, init_application, cloud_mgr)
+    # ต้องกำหนด drawer ให้กับ page เพื่อให้ Android รู้จัก Scaffolding ของ Drawer
+    page.drawer = nav_drawer 
+
 
     # --- 2. Date & Calendar Header ---
     txt_month_header = ft.Text("Month", size=18, weight="bold")
@@ -192,9 +215,10 @@ def real_main(page: ft.Page):
     
     for c in [card_bal, card_inc, card_exp, card_net]:
         c.width = 160 
-        c.height = 80
-        c.padding = 10
+        c.height = 100
+        c.padding = 15
 
+    # [FIX] เรียงลำดับการ์ดใหม่ตามที่ขอ (รายรับ -> รายจ่าย -> คงเหลือ -> มั่งคั่ง)
     summary_row = ft.Row(
         [card_inc, card_exp, card_bal, card_net], 
         scroll=ft.ScrollMode.HIDDEN, 
@@ -277,7 +301,7 @@ def real_main(page: ft.Page):
         nav_drawer.controls[1].label = "Dashboard"
         nav_drawer.controls[3].label = T("recurring")
         nav_drawer.controls[4].label = T("top_chart")
-        nav_drawer.controls[7].label = T("settings")
+        nav_drawer.controls[6].label = T("settings")
 
         card_inc.txt_title.value = T("income")
         card_exp.txt_title.value = T("expense")
@@ -378,16 +402,23 @@ def real_main(page: ft.Page):
         
         cards_row.controls.clear()
         if cards_db:
+            # ไม่ต้องใช้ dynamic_col สำหรับ Android เพราะเราใช้ Row แนวนอน
             for c in cards_db: 
                 usage_cumulative = current_db.get_card_usage(c[0], current_month_str)
+                
+                # สร้าง Widget
                 mc = MiniCardWidget(
                     c, 
                     lambda d: dialogs.open_pay_card_dialog(page, current_db, config, refresh_ui, d, current_filter_date),
                     lambda d: dialogs.open_card_history_dialog(page, current_db, config, refresh_ui, d, cal.year, cal.month),
                     usage_cumulative, 
-                    col=None
+                    col=None,          # Android ไม่ต้องใช้ col
+                    show_balance=False # Android ไม่โชว์ยอดคงเหลือ
                 )
-                mc.width = 160
+                
+                # [FIX IMPORTANT] ต้องกำหนดความกว้าง ไม่งั้นมันจะหดหายไปใน Row แนวนอน
+                mc.width = 170 
+                
                 cards_row.controls.append(mc)
             cards_row.visible = True
         else: 
@@ -464,6 +495,9 @@ def real_main(page: ft.Page):
             recs = current_db.get_recurring()
             if not recs:
                 rec_col.controls.append(ft.Text(T("no_items"), color="grey"))
+                # [FIX] เช็คก่อนว่า control ถูกเพิ่มลง page หรือยัง
+                if rec_col.page:
+                    rec_col.update()
                 return
 
             check_month = f"{cal.year}-{cal.month:02d}"
@@ -497,7 +531,10 @@ def real_main(page: ft.Page):
                      bgcolor=COLOR_SURFACE, padding=5, border_radius=8
                  )
                  rec_col.controls.append(row)
-            rec_col.update()
+            
+            # [FIX] เช็คก่อนว่า control ถูกเพิ่มลง page หรือยัง ก่อนสั่ง update
+            if rec_col.page:
+                rec_col.update()
 
         refresh_rec_list()
         

@@ -296,8 +296,11 @@ class CreditCardWidget(ft.Container):
         ], spacing=2)
         self.bgcolor = self.color if self.color else "#424242"; self.padding = 15; self.border_radius = 12; self.height = 130; self.shadow = ft.BoxShadow(blur_radius=10, color="#4D000000", offset=ft.Offset(2, 4))
 
+# ui_components.py
+
 class MiniCardWidget(ft.Container):
-    def __init__(self, card_data, onPay, onShowHistory, usage=0.0, col=None):
+    # [FIX] เพิ่ม show_balance=False ในบรรทัดนี้
+    def __init__(self, card_data, onPay, onShowHistory, usage=0.0, col=None, show_balance=False):
         super().__init__(col=col)
         self.cid, self.name, self.limit, self.closing_day, self.color = card_data
         self.usage = usage; self.limit = float(self.limit)
@@ -319,7 +322,7 @@ class MiniCardWidget(ft.Container):
         )
 
         pay_btn = ft.Container(
-            content=ft.Icon("payment", size=16, color="white70"), # ขยาย icon นิดหน่อย
+            content=ft.Icon("payment", size=16, color="white70"), 
             padding=5, 
             border_radius=5, 
             bgcolor="white10", 
@@ -328,27 +331,20 @@ class MiniCardWidget(ft.Container):
             tooltip=f"Pay {self.name}"
         )
 
-        display_text = f"{format_currency(self.usage)} / {format_currency(self.limit - self.usage)}"
+        # [FIX] เลือกแสดงผลตามการตั้งค่า
+        if show_balance:
+            display_text = f"{format_currency(self.usage)} / {format_currency(self.limit - self.usage)}"
+        else:
+            display_text = f"{format_currency(self.usage)}"
 
         self.content = ft.Column([
-            # [บรรทัดที่ 1] ชื่อบัตร และ ปุ่มจ่ายเงิน
-            ft.Row([
-                name_widget, 
-                pay_btn
-            ], alignment="spaceBetween", vertical_alignment="center"), 
-            
-            # [บรรทัดที่ 2] ยอดเงิน (ตัวใหญ่ขึ้น)
-            ft.Container(
-                content=ft.Text(display_text, size=16, weight="bold", color="white"),
-                padding=ft.padding.only(left=8, top=2, bottom=2)
-            ),
-
-            # [บรรทัดที่ 3] Progress Bar
+            ft.Row([name_widget, pay_btn], alignment="spaceBetween", vertical_alignment="center"), 
+            ft.Container(content=ft.Text(display_text, size=16, weight="bold", color="white"), padding=ft.padding.only(left=8, top=2, bottom=2)),
             ft.ProgressBar(value=percent, color=prog_color, bgcolor="black26", height=4, border_radius=2)
-        ], spacing=2, alignment="spaceBetween") # จัดระยะห่างให้พอดี
+        ], spacing=2, alignment="spaceBetween")
         
         self.bgcolor = self.color if self.color else "#424242"
         self.padding = ft.padding.all(10)
         self.border_radius = 12
-        self.height = 80 # เพิ่มความสูงเพื่อให้แสดงผลได้ครบ 3 ส่วน
+        self.height = 80 
         self.shadow = ft.BoxShadow(blur_radius=5, color="#4D000000", offset=ft.Offset(0, 2))

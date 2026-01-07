@@ -55,12 +55,21 @@ def open_settings_dialog(page, current_db, config, refresh_ui_callback, init_app
     curr_size = config.get("font_size", 14)
     curr_weight_int = config.get("font_weight", 600)
     
-    dd_font = ft.Dropdown(label=T("font_family"), options=[
-        ft.dropdown.Option("Kanit"), ft.dropdown.Option("Prompt"), 
-        ft.dropdown.Option("Sarabun"), ft.dropdown.Option("Mitr"), 
-        ft.dropdown.Option("Roboto")
-    ], value=curr_font)
-    
+    # settings_ui.py
+
+    dd_font = ft.Dropdown(
+        label=T("font_family"), 
+        options=[
+            ft.dropdown.Option("Prompt"), 
+            ft.dropdown.Option("NotoSansThaiLooped"), # มีหัว (อ่านง่าย)
+            ft.dropdown.Option("NotoSansThai"),       # ไม่มีหัว (โมเดิร์น)
+            ft.dropdown.Option("NotoSerifThai"),      # มีเชิง (หรูหรา) <--- เพิ่มตัวนี้
+            ft.dropdown.Option("Anuphan"),            # กึ่งทางการ
+            ft.dropdown.Option("PlaypenSans"),        # ลายมือ
+        ], 
+        value=curr_font
+    )
+            
     sl_weight = ft.Slider(min=100, max=900, divisions=8, value=curr_weight_int, label="{value}")
     txt_weight_label = ft.Text(f"{T('font_weight')}: {int(curr_weight_int)}")
     sl_weight.on_change = lambda e: [setattr(txt_weight_label, 'value', f"{T('font_weight')}: {int(e.control.value)}"), page.update()]
