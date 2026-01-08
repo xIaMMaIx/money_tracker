@@ -16,7 +16,8 @@ from utils import *
 from database import DatabaseManager
 from cloud import CloudManager
 from ui_components import *
-from settings_ui import open_settings_dialog
+# [CHANGE] Import settings functions separately
+import settings_ui 
 import dialogs
 
 # ///////////////////////////////////////////////////////////////
@@ -53,7 +54,6 @@ def real_main(page: ft.Page):
     config = load_config()
     current_db_path = config.get("db_path", DEFAULT_DB_NAME)
 
-    # [FONT FIX] ประกาศ Font ให้ครบถ้วน
     page.fonts = {
         "Prompt": "/fonts/Prompt.ttf",
         "Kanit": "/fonts/Kanit.ttf",
@@ -103,7 +103,7 @@ def real_main(page: ft.Page):
     # [SECTION 4] UI COMPONENTS (Mobile Optimized)
     # ///////////////////////////////////////////////////////////////
     
-    # --- 1. App Bar & Navigation ---
+    # --- 1. App Bar & Navigation (UPDATED) ---
     def open_drawer(e):
         page.open(nav_drawer)
 
@@ -112,11 +112,24 @@ def real_main(page: ft.Page):
         page.close(nav_drawer)
         e.control.selected_index = 0
         
-        if idx == 0: pass 
+        # [CHANGE] Map new menu items to new settings functions
+        if idx == 0: pass # Dashboard
         elif idx == 1: show_recurring_dialog()
         elif idx == 2: open_top10_dialog(None)
-        elif idx == 3: open_settings_dialog(page, current_db, config, refresh_ui, init_application, cloud_mgr)
+        
+        # Settings Menu Items
+        elif idx == 3: # General
+            settings_ui.open_general_dialog(page, current_db, config, refresh_ui, init_application)
+        elif idx == 4: # Appearance
+            settings_ui.open_appearance_dialog(page, config, refresh_ui)
+        elif idx == 5: # Categories
+            settings_ui.open_category_dialog(page, current_db, config)
+        elif idx == 6: # Credit Cards
+            settings_ui.open_card_dialog(page, current_db, config, refresh_ui)
+        elif idx == 7: # Cloud
+            settings_ui.open_cloud_dialog(page, current_db, config, refresh_ui, cloud_mgr)
             
+    # [CHANGE] Updated Navigation Drawer Structure
     nav_drawer = ft.NavigationDrawer(
         controls=[
             ft.Container(
@@ -131,7 +144,13 @@ def real_main(page: ft.Page):
             ft.NavigationDrawerDestination(icon="repeat", label=T("recurring")),
             ft.NavigationDrawerDestination(icon="pie_chart", label=T("top_chart")),
             ft.Divider(),
-            ft.NavigationDrawerDestination(icon="settings", label=T("settings")),
+            # Expanded Settings
+            ft.Text("   " + T("settings"), color="grey", size=12, weight="bold"),
+            ft.NavigationDrawerDestination(icon="settings", label=T("general")),
+            ft.NavigationDrawerDestination(icon="palette", label=T("appearance")),
+            ft.NavigationDrawerDestination(icon="category", label=T("categories")),
+            ft.NavigationDrawerDestination(icon="credit_card", label=T("credit_cards")),
+            ft.NavigationDrawerDestination(icon="cloud", label=T("cloud")),
         ],
         on_change=lambda e: handle_drawer_change(e)
     )
@@ -211,17 +230,17 @@ def real_main(page: ft.Page):
             content=ft.Column([
                 ft.Text(T("overview"), size=20, weight="bold"),
                 ft.Divider(),
+                
                 card_inc,           # รายรับ
-                ft.Container(height=2),
                 card_exp,           # รายจ่าย
-                ft.Container(height=2),
                 card_net,           # มั่งคั่ง
+                
                 ft.Container(height=10),
                 ft.Divider(),
                 ft.Text(T("credit_cards"), size=16, weight="bold"),
                 cards_content
-            ], scroll=ft.ScrollMode.AUTO),
-            padding=15,
+            ], scroll=ft.ScrollMode.AUTO, spacing=10),
+            padding=10,
             width=popup_width,
             height=popup_height,
         )
@@ -329,10 +348,16 @@ def real_main(page: ft.Page):
         
         summary_font_delta = current_font_delta - 4
         
+        # [CHANGE] Update labels for new Drawer
         nav_drawer.controls[1].label = "Dashboard"
         nav_drawer.controls[3].label = T("recurring")
         nav_drawer.controls[4].label = T("top_chart")
-        nav_drawer.controls[6].label = T("settings")
+        nav_drawer.controls[6].value = "   " + T("settings")
+        nav_drawer.controls[7].label = T("general")
+        nav_drawer.controls[8].label = T("appearance")
+        nav_drawer.controls[9].label = T("categories")
+        nav_drawer.controls[10].label = T("credit_cards")
+        nav_drawer.controls[11].label = T("cloud")
 
         card_inc.txt_title.value = T("income")
         card_exp.txt_title.value = T("expense")
@@ -343,18 +368,12 @@ def real_main(page: ft.Page):
 
         cal.update_style(current_font_delta, current_font_weight_str)
 
-        # -----------------------------------------------------------
-        # [จุดที่ต้องเพิ่ม] ปรับน้ำหนัก Font ยอดเงินคงเหลือ (+200)
-        # -----------------------------------------------------------
         try:
-            # ดึงค่าตัวเลขจาก string เช่น "w600" -> 600
             base_w = int(current_font_weight_str.replace("w", ""))
-            # บวกเพิ่ม 200 แต่ห้ามเกิน 900
             bal_w = min(base_w + 100, 900)
             txt_main_balance.weight = f"w{bal_w}"
         except:
             txt_main_balance.weight = "bold"
-        # -----------------------------------------------------------
 
         if current_filter_date:
             try:
@@ -626,6 +645,10 @@ def real_main(page: ft.Page):
         )
         page.open(dlg)
 
+    # [FIX] Bind buttons to function (เชื่อมปุ่มให้ทำงาน)
+    btn_expense.on_click = lambda e: open_manual_add(e, "expense")
+    btn_income.on_click = lambda e: open_manual_add(e, "income")
+
     # ///////////////////////////////////////////////////////////////
     # [SECTION 8] VIEW BUILDERS (Mobile Layout)
     # ///////////////////////////////////////////////////////////////
@@ -675,7 +698,7 @@ def real_main(page: ft.Page):
         nonlocal current_db
         time.sleep(0.5)
         
-        # [NEW LOGIC] บังคับบันทึก path ลง config เสมอ เพื่อให้ครั้งหน้าใช้ path นี้ได้เลย (ถ้ามี)
+        # [NEW LOGIC] บังคับบันทึก path ลง config เสมอ
         config["db_path"] = selected_path
         save_config(config)
         
@@ -692,14 +715,10 @@ def real_main(page: ft.Page):
         page.update()
         time.sleep(1.0) 
 
-        # [NEW LOGIC] ตรวจสอบ Database โดยไม่ถาม User
-        target_db = db_path # ค่าจาก config
+        target_db = db_path 
         if not os.path.exists(target_db):
-            # ถ้าหาไม่เจอ (เช่น เป็น path บน PC หรือเพิ่งลงแอพใหม่) ให้ใช้ค่า Default ทันที
-            # DatabaseManager จะสร้างไฟล์ modern_money.db ให้อัตโนมัติถ้าไม่มี
             target_db = DEFAULT_DB_NAME
         
-        # เรียกใช้งานทันที (ตัด FilePicker และ Dialog ออก)
         init_application(target_db)
 
     def start_auto_sync():
