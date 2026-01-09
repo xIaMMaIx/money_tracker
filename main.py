@@ -85,7 +85,9 @@ def main(page: ft.Page):
     current_filter_date = None
     current_lang = config.get("lang", "th")
     current_view_mode = start_mode
-    cloud_mgr = CloudManager()
+    
+    # [FIX 1] สร้าง CloudManager โดยใส่ config เข้าไป (db ใส่ None ไปก่อน แล้วค่อยเติมทีหลัง)
+    cloud_mgr = CloudManager(None, config)
     
     # [NEW] ตัวแปรสำหรับ Search
     current_search_query = ""
@@ -178,7 +180,6 @@ def main(page: ft.Page):
 
     cal = CalendarWidget(page, on_date_change, current_font_delta, current_font_weight_str)
     
-    # [MODIFIED] Reset filter ต้องเคลียร์ search ด้วย
     btn_reset_filter.on_click = lambda e: [cal.reset(), clear_search(None)]
 
     btn_simple_exp = ft.Container(content=ft.Row([ft.Icon("mic", size=24, color="white"), ft.Text(T("expense"), size=16, weight="bold", color="white")], alignment="center", spacing=5), bgcolor=COLOR_BTN_EXPENSE, border_radius=15, height=60, expand=True, ink=True, on_click=lambda e: start_listen(e, "expense"))
@@ -280,7 +281,6 @@ def main(page: ft.Page):
         is_date_selected = (current_filter_date is not None)
         enable_buttons = is_current_month or is_date_selected
         
-        # [MODIFIED] Net Worth ซ่อนเมื่อดูเดือนเก่า
         card_net.visible = is_current_month
         
         bg_exp = COLOR_BTN_EXPENSE if enable_buttons else "grey"
@@ -300,10 +300,9 @@ def main(page: ft.Page):
         cards_db = current_db.get_cards()
         total_debt = 0.0
         
-        # [MODIFIED] คำนวณ Net Worth จากหนี้สะสมจนถึงสิ้นเดือนนั้นๆ
         if cards_db:
              for c in cards_db:
-                 total_debt += current_db.get_card_usage(c[0], current_month_str) # ยอดหนี้สะสม
+                 total_debt += current_db.get_card_usage(c[0], current_month_str)
 
         net_worth = bal - total_debt
 
@@ -321,14 +320,12 @@ def main(page: ft.Page):
         
         cards_row.controls.clear()
         
-        # [MODIFIED] แสดงรายการบัตรทุกเดือน (พร้อมยอดหนี้สะสม ณ เวลานั้น)
         if cards_db:
             count = len(cards_db)
             desktop_span = 12 // min(count, 4) 
             sm_span = 6 if count > 1 else 12 
             dynamic_col = {"xs": 12, "sm": sm_span, "md": desktop_span}
             for c in cards_db: 
-                # [MODIFIED] แสดงยอดหนี้สะสมจนถึงเดือนที่เลือก
                 usage_cumulative = current_db.get_card_usage(c[0], current_month_str)
                 cards_row.controls.append(MiniCardWidget(
                     c, 
@@ -342,7 +339,6 @@ def main(page: ft.Page):
         else: 
             cards_row.visible = False
         
-        # [MODIFIED] ตรรกะการดึงข้อมูล (Search vs Normal)
         rows = []
         if current_search_query:
             rows = current_db.search_transactions(current_search_query)
@@ -470,7 +466,6 @@ def main(page: ft.Page):
                         tooltip="Waiting for auto-pay date"
                     )
             else:
-                # [MODIFIED] Pass selected_date_str to dialogs
                 pay_func = lambda e, i=item_name, a=amt, c=cat, d=day, cm=check_month, p=pid: dialogs.pay_recurring_action(page, current_db, refresh_ui, i,a,c,d,cm,p, selected_date_str=current_filter_date)
                 btn = ft.ElevatedButton(T("paid"), disabled=True, height=25) if is_paid else ft.ElevatedButton(T("pay"), style=ft.ButtonStyle(bgcolor=COLOR_PRIMARY, color="white"), height=25, on_click=pay_func)
             
@@ -493,7 +488,6 @@ def main(page: ft.Page):
     # [SECTION 6] DIALOG ACTIONS -> MOVED TO dialogs.py
     # ///////////////////////////////////////////////////////////////
     
-    # --- Link Local Functions to Dialogs Module ---
     def open_add_rec(e):
         dialogs.open_add_rec_dialog(page, current_db, config, refresh_ui)
         
@@ -735,7 +729,6 @@ def main(page: ft.Page):
             summary_section, 
             cards_row, 
             ft.Divider(color="transparent"),
-            # [MODIFIED] จัด Layout Header ให้มี Search Bar
             ft.Row([
                 txt_heading_recent, 
                 ft.Row([
@@ -767,28 +760,21 @@ def main(page: ft.Page):
         nonlocal current_view_mode
         current_view_mode = mode
         
-        # 1. ซ่อน UI (Fade Out)
         main_container.opacity = 0
-        # เคลียร์ Content ทิ้งทันที เพื่อลบตัวดันขนาด (Layout Constraints)
         main_container.content = ft.Container() 
         main_container.update()
         
-        # 2. เช็ค Maximize และคืนค่ากลับมาก่อน (ถ้ามี)
         if page.window.maximized:
             page.window.maximized = False
             page.update()
-            time.sleep(0.2) # รอ OS ย่อจากเต็มจอ
+            time.sleep(0.2) 
             
-        # 3. [จุดสำคัญ] ปลดล็อกขนาดขั้นต่ำก่อน
         page.window.min_width = 0
         page.window.min_height = 0
         page.window.resizable = True
         page.update()
-        
-        # *** หัวใจสำคัญ: รอให้ OS รับรู้ว่าปลดล็อกแล้วจริงๆ ***
         time.sleep(0.1) 
         
-        # 4. สั่งปรับขนาดหน้าต่าง
         if mode == "simple":
             page.window.width = 400
             page.window.height = 600
@@ -800,11 +786,8 @@ def main(page: ft.Page):
             page.window.center()
             
         page.update()
-        
-        # *** รอให้หน้าต่างย่อ/ขยายเสร็จจริงๆ ก่อนใส่เนื้อหา ***
         time.sleep(0.2) 
 
-        # 5. โหลดเนื้อหาใหม่ (Layout) และล็อกขนาดขั้นต่ำใหม่
         if mode == "simple":
             main_container.content = build_simple_view()
             page.window.min_width = 400
@@ -815,8 +798,6 @@ def main(page: ft.Page):
             page.window.min_height = 800
             
         page.update()
-
-        # 6. รีเฟรชข้อมูลและแสดงผล (Fade In)
         refresh_ui()
         main_container.opacity = 1
         main_container.update()
@@ -824,7 +805,33 @@ def main(page: ft.Page):
     def init_application(selected_path):
         nonlocal current_db
         time.sleep(0.5)
-        current_db = DatabaseManager(selected_path); current_db.connect(); config["db_path"] = selected_path; save_config(config)
+        
+        config["db_path"] = selected_path
+        save_config(config)
+        
+        current_db = DatabaseManager(selected_path)
+        current_db.connect()
+ 
+        # [FIX] เชื่อมต่อ DB เข้า CloudManager
+        cloud_mgr.db = current_db
+        cloud_mgr.config = config
+        cloud_mgr.base_url = config.get("firebase_url", "").rstrip('/')
+
+        if config.get("firebase_url"):
+            # [FIXED LOGIC] ตรวจสอบว่ามีการซ่อม UUID หรือไม่
+            if current_db.uuid_fixed:
+                # ถ้ามีการซ่อม UUID ให้ Force Push เพื่อล้างข้อมูลเก่าบน Cloud
+                print("Migration detected: Force Pushing to Cloud to clean bad data...")
+                safe_show_snack("System Updated: Cleaning Cloud Data...", "blue")
+                cloud_mgr.force_push(callback=lambda msg: print(f"Cloud Force Push: {msg}"))
+            else:
+                # ถ้าปกติ ให้ Sync ตามเดิม
+                print("App Start: Syncing with Cloud...")            
+                cloud_mgr.sync_data(callback=lambda msg: print(f"Cloud: {msg}"))
+            
+            # ตั้งค่าให้ Sync ทุกครั้งที่มีการแก้ไขข้อมูลใน DB
+            current_db.on_data_changed = lambda: cloud_mgr.sync_data()
+            
         cal.set_db(current_db)
         switch_view(current_view_mode, should_center=False)
 
@@ -842,50 +849,36 @@ def main(page: ft.Page):
             def create_new(e): dlg.open = False; page.update(); init_application(DEFAULT_DB_NAME)
             dlg.content = ft.Text(f"Could not find: {db_path}"); dlg.actions = [ft.TextButton("Create New", on_click=create_new), ft.TextButton("Browse...", on_click=lambda _: pick_dialog.pick_files(allowed_extensions=["db"]))]; page.open(dlg)
 
-    # -----------------------------------------------------------
-    # [NEW] ระบบ Auto Refresh เมื่อ Database มีการเปลี่ยนแปลง
-    # -----------------------------------------------------------
     def start_auto_sync():
         def sync_loop():
-            # หาตำแหน่งไฟล์ DB
             current_conf = load_config()
             target_path = current_conf.get("db_path", "modern_money.db")
             
-            # แปลงเป็น Absolute Path เพื่อความชัวร์
             if not os.path.isabs(target_path):
                 base_dir = os.path.dirname(os.path.abspath(__file__))
                 target_path = os.path.join(base_dir, target_path)
 
             last_mtime = 0
-            
-            # ตรวจสอบครั้งแรกเพื่อจำเวลาไว้ก่อน
             if os.path.exists(target_path):
                 last_mtime = os.path.getmtime(target_path)
 
             while True:
-                time.sleep(2) # เช็คทุกๆ 2 วินาที
+                time.sleep(2) 
                 try:
                     if os.path.exists(target_path):
-                        # อ่านเวลาแก้ไขล่าสุดของไฟล์ DB
                         current_mtime = os.path.getmtime(target_path)
-                        
-                        # เช็คไฟล์ WAL ด้วย (ถ้ามี) เพราะ SQLite โหมด WAL เวลาไฟล์หลักอาจไม่เปลี่ยนทันที
                         wal_path = target_path + "-wal"
                         if os.path.exists(wal_path):
                             current_mtime = max(current_mtime, os.path.getmtime(wal_path))
 
-                        # ถ้าเวลาไม่ตรงกับครั้งล่าสุด = มีการเปลี่ยนแปลง
                         if current_mtime != last_mtime:
                             last_mtime = current_mtime
-                            print("Database changed! Refreshing UI...") # Log ดูเล่นๆ
                             refresh_ui()
                 except Exception as e:
                     print(f"Sync Error: {e}")
         
-        # รันใน Thread แยก เพื่อไม่ให้หน้าจอค้าง
         threading.Thread(target=sync_loop, daemon=True).start()
 
-    # สั่งเริ่มระบบ Auto Sync
     start_auto_sync()
     
     check_startup()

@@ -11,35 +11,56 @@ class TransactionCard(ft.Container):
         super().__init__()
         self.tid, self.ttype, self.item, self.amount, self.category, self.date_str, self.card_name = data
         
+        # [NEW] ตรวจสอบว่าเป็น System Item หรือไม่
+        is_system_item = self.item in ["ยอดยกมา", "Balance Forward"]
+
         if self.ttype == "income": main_color = COLOR_INCOME
         elif self.ttype == "repayment": main_color = "#29B6F6"
         else: main_color = COLOR_EXPENSE
         
+        # ... (code ส่วนกำหนด size/font เดิม) ...
         base_size = 14 + font_delta
         title_size = 16 + font_delta
         amt_size = 16 + font_delta
-        
-        # Container สำหรับปุ่ม Action (Edit/Delete)
-        self.actions_container = ft.Container(
-            content=ft.Row([
+
+        # [NEW] กำหนดปุ่ม Action ตามประเภทรายการ
+        if is_system_item:
+            # ถ้าเป็นยอดยกมา ให้แสดงเป็นแม่กุญแจ (Lock)
+            action_content = ft.Row([
+                ft.Icon(name="lock", color="grey", size=16, tooltip="System Auto-Generated")
+            ], alignment="center")
+            # ความกว้างตอนเปิดอาจจะน้อยหน่อยแค่ให้เห็น icon
+            opened_width = 40
+        else:
+            # ถ้าเป็นรายการปกติ แสดงปุ่ม Edit/Delete
+            action_content = ft.Row([
                 ft.IconButton(icon="edit", icon_color=COLOR_PRIMARY, tooltip="Edit", on_click=lambda e: onEdit(data)), 
                 ft.IconButton(icon="delete", icon_color=COLOR_BTN_EXPENSE, tooltip="Delete", on_click=lambda e: onDelete(self.tid))
-            ], spacing=0), 
-            width=0, # เริ่มต้นซ่อนไว้
+            ], spacing=0)
+            opened_width = 80
+
+        self.actions_container = ft.Container(
+            content=action_content, 
+            width=0, 
             opacity=0, 
             animate=ft.Animation(300, "easeOut"), 
             animate_opacity=200, 
             clip_behavior=ft.ClipBehavior.HARD_EDGE
         )
         
+        # [NEW] ปรับแก้ฟังก์ชัน Toggle ให้ใชัค่า width ที่ถูกต้อง
+        self.target_width = opened_width
+
+        # ... (ส่วน meta_info และ layout code เดิม) ...
+        # ... (คัดลอกส่วน Layout เดิมมาวางได้เลย) ...
+        
+        # ตัวอย่างส่วน Layout เดิม (ย่อ):
         meta_info = [ft.Text(f"{self.category}", size=base_size - 2, color="grey")]
         if self.card_name: meta_info.append(ft.Container(content=ft.Text(self.card_name, size=10, color="white"), bgcolor="#333333", padding=ft.padding.symmetric(horizontal=4, vertical=2), border_radius=4))
-        
         sign = "+" if self.ttype in ["income", "repayment"] else "-"
         amt_text = f"{sign}{format_currency(self.amount)}"
         if self.ttype == "repayment": amt_text = f"Pay {format_currency(self.amount)}"
-        
-        # Layout การแสดงผล
+
         if minimal:
             card_content = ft.Row([
                 ft.Column([
@@ -48,7 +69,7 @@ class TransactionCard(ft.Container):
                 ], expand=True, spacing=0),
                 ft.Row([
                     ft.Text(amt_text, color=main_color, weight=font_weight, size=amt_size), 
-                    self.actions_container # ปุ่มจะเลื่อนออกมาตรงนี้
+                    self.actions_container 
                 ], spacing=0, alignment="end")
             ], alignment="spaceBetween", vertical_alignment="center")
             self.padding = ft.padding.symmetric(horizontal=5, vertical=8)
@@ -59,8 +80,8 @@ class TransactionCard(ft.Container):
             self.border = ft.border.only(bottom=ft.BorderSide(3, main_color))
             
         self.content = card_content
-        self.on_hover = self.toggle_actions # สำหรับ Desktop (เมาส์ชี้)
-        self.on_click = self.toggle_actions_click # [เพิ่มใหม่] สำหรับ Mobile (แตะเพื่อเปิด)
+        self.on_hover = self.toggle_actions 
+        self.on_click = self.toggle_actions_click 
         
         self.animate_opacity = 500
         self.opacity = 0 if is_new else 1
@@ -68,18 +89,15 @@ class TransactionCard(ft.Container):
         self.border_radius = ft.border_radius.only(top_left=5, top_right=5)
         self.margin = ft.margin.only(bottom=2)
 
-    # ฟังก์ชันสำหรับ Desktop (Hover)
     def toggle_actions(self, e): 
         is_hover = (e.data == "true")
-        self.actions_container.width = 80 if is_hover else 0
+        self.actions_container.width = self.target_width if is_hover else 0
         self.actions_container.opacity = 1 if is_hover else 0
         self.actions_container.update()
 
-    # [เพิ่มใหม่] ฟังก์ชันสำหรับ Mobile (Click)
     def toggle_actions_click(self, e):
-        # เช็คว่าตอนนี้เปิดหรือปิดอยู่ แล้วสลับสถานะ
         if self.actions_container.width == 0:
-             self.actions_container.width = 80
+             self.actions_container.width = self.target_width
              self.actions_container.opacity = 1
         else:
              self.actions_container.width = 0

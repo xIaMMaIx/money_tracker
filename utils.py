@@ -222,7 +222,8 @@ def load_config():
     default = {
         "db_path": DEFAULT_DB_NAME, "width": 400, "height": 700, "lang": "th", 
         "font_family": "Prompt", "font_size": 14, "font_weight": 400,
-        "cloud_key": "", "cloud_sheet": "", "startup_mode": "simple"
+        "cloud_key": "", "cloud_sheet": "", "startup_mode": "simple",
+        "firebase_url": ""  
     }
     if os.path.exists(CONFIG_FILE):
         try:

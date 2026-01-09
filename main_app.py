@@ -90,7 +90,9 @@ def real_main(page: ft.Page):
     db_path = current_db_path 
     current_filter_date = None
     current_lang = config.get("lang", "th")
-    cloud_mgr = CloudManager()
+    
+    # [FIX 1] สร้าง CloudManager โดยส่ง config เข้าไป
+    cloud_mgr = CloudManager(None, config)
     
     current_search_query = ""
 
@@ -119,7 +121,7 @@ def real_main(page: ft.Page):
         
         # Settings Menu Items
         elif idx == 3: # General
-            settings_ui.open_general_dialog(page, current_db, config, refresh_ui, init_application)
+            settings_ui.open_general_dialog(page, current_db, config, refresh_ui, init_application, cloud_mgr)
         elif idx == 4: # Appearance
             settings_ui.open_appearance_dialog(page, config, refresh_ui)
         elif idx == 5: # Categories
@@ -192,32 +194,56 @@ def real_main(page: ft.Page):
     txt_budget_value = ft.Text("- / -", color="white54", size=10)
     pb_budget = ft.ProgressBar(value=0, color=COLOR_PRIMARY, bgcolor="white10", height=4, border_radius=2)
     
-    # Dashboard Button (Popup Trigger)
-    def open_dashboard_popup(e):
-        # คำนวณขนาดเป็น % จากหน้าจอ
-        screen_w = page.width
-        screen_h = page.height
-        
-        popup_width = screen_w 
-        popup_height = screen_h 
+    # --- 4. Summary Cards (Hidden Variables) ---
+    summary_font_delta = current_font_delta - 4 
+    card_inc = SummaryCard("income", "+0.00", COLOR_INCOME, "arrow_upward", summary_font_delta, current_font_weight_str)
+    card_exp = SummaryCard("expense", "-0.00", COLOR_EXPENSE, "arrow_downward", summary_font_delta, current_font_weight_str)
+    card_net = SummaryCard("Net Worth", "0.00", "cyan", "monetization_on", summary_font_delta, current_font_weight_str)
 
+    # [CHANGE] New Overview Popup (Only Summary)
+    def open_overview_popup(e):
+        screen_w = page.width
+        # Resize cards for popup
         for c in [card_inc, card_exp, card_net]:
             c.height = 70       
             c.width = None      
             c.expand = False    
             c.padding = 10 
 
-        # 1. Credit Cards Content
+        dlg_content = ft.Container(
+            content=ft.Column([
+                ft.Text(T("overview"), size=20, weight="bold"),
+                ft.Divider(),
+                card_inc,
+                card_exp,
+                card_net,
+            ], scroll=ft.ScrollMode.AUTO, spacing=10),
+            padding=20,
+            width=screen_w,
+        )
+        
+        dlg_overview = ft.AlertDialog(
+            content=dlg_content,
+            content_padding=0,
+            actions=[ft.TextButton(T("close"), on_click=lambda _: page.close(dlg_overview))]
+        )
+        page.open(dlg_overview)
+
+    # [CHANGE] New Cards Popup (Only Credit Cards)
+    def open_cards_popup(e):
+        screen_w = page.width
+        
         cards_content = ft.Column(spacing=10)
         cards_db = current_db.get_cards()
+        
         if cards_db:
              month_str = f"{cal.year}-{cal.month:02d}"
              for c in cards_db:
                  usage = current_db.get_card_usage(c[0], month_str)
                  mc = MiniCardWidget(
                     c, 
-                    lambda d: [page.close(dlg_dash), dialogs.open_pay_card_dialog(page, current_db, config, refresh_ui, d, current_filter_date)],
-                    lambda d: [page.close(dlg_dash), dialogs.open_card_history_dialog(page, current_db, config, refresh_ui, d, cal.year, cal.month)],
+                    lambda d: [page.close(dlg_cards), dialogs.open_pay_card_dialog(page, current_db, config, refresh_ui, d, current_filter_date)],
+                    lambda d: [page.close(dlg_cards), dialogs.open_card_history_dialog(page, current_db, config, refresh_ui, d, cal.year, cal.month)],
                     usage, 
                     col=None, show_balance=True
                  )
@@ -228,40 +254,47 @@ def real_main(page: ft.Page):
 
         dlg_content = ft.Container(
             content=ft.Column([
-                ft.Text(T("overview"), size=20, weight="bold"),
+                ft.Text(T("credit_cards"), size=20, weight="bold"),
                 ft.Divider(),
-                
-                card_inc,           # รายรับ
-                card_exp,           # รายจ่าย
-                card_net,           # มั่งคั่ง
-                
-                ft.Container(height=10),
-                ft.Divider(),
-                ft.Text(T("credit_cards"), size=16, weight="bold"),
                 cards_content
             ], scroll=ft.ScrollMode.AUTO, spacing=10),
-            padding=10,
-            width=popup_width,
-            height=popup_height,
+            padding=20,
+            width=screen_w,
+            height=page.height * 0.6,
         )
-        
-        dlg_dash = ft.AlertDialog(
+
+        dlg_cards = ft.AlertDialog(
             content=dlg_content,
             content_padding=0,
-            actions=[ft.TextButton(T("close"), on_click=lambda _: page.close(dlg_dash))]
+            actions=[ft.TextButton(T("close"), on_click=lambda _: page.close(dlg_cards))]
         )
-        page.open(dlg_dash)
+        page.open(dlg_cards)
 
-    btn_open_dashboard = ft.Container(
+    # [CHANGE] Two separate buttons
+    btn_overview = ft.Container(
         content=ft.Row([
             ft.Icon("dashboard", size=16, color=COLOR_PRIMARY),
-            ft.Text(T("overview") + " / Cards", color=COLOR_PRIMARY, weight="bold")
+            ft.Text(T("overview"), color=COLOR_PRIMARY, weight="bold", size=12)
         ], alignment="center", spacing=5),
         padding=10,
         border=ft.border.all(1, COLOR_PRIMARY),
         border_radius=10,
         ink=True,
-        on_click=open_dashboard_popup
+        expand=True,
+        on_click=open_overview_popup
+    )
+
+    btn_cards = ft.Container(
+        content=ft.Row([
+            ft.Icon("credit_card", size=16, color="orange"),
+            ft.Text(T("credit_cards"), color="orange", weight="bold", size=12)
+        ], alignment="center", spacing=5),
+        padding=10,
+        border=ft.border.all(1, "orange"),
+        border_radius=10,
+        ink=True,
+        expand=True,
+        on_click=open_cards_popup
     )
 
     compact_header = ft.Container(
@@ -272,19 +305,17 @@ def real_main(page: ft.Page):
             ft.Row([ft.Text(T("budget"), size=10, color="grey"), txt_budget_value], alignment="spaceBetween"),
             pb_budget,
             ft.Container(height=10),
-            btn_open_dashboard
+            # [CHANGE] Inserted separate buttons here
+            ft.Row([
+                btn_overview,
+                btn_cards
+            ], spacing=10)
         ], spacing=2, horizontal_alignment="center"),
         padding=20,
         bgcolor=COLOR_SURFACE,
         border_radius=ft.border_radius.only(bottom_left=25, bottom_right=25),
         shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLACK54, offset=ft.Offset(0, 5))
     )
-
-    # --- 4. Summary Cards (Hidden Variables) ---
-    summary_font_delta = current_font_delta - 4 
-    card_inc = SummaryCard("income", "+0.00", COLOR_INCOME, "arrow_upward", summary_font_delta, current_font_weight_str)
-    card_exp = SummaryCard("expense", "-0.00", COLOR_EXPENSE, "arrow_downward", summary_font_delta, current_font_weight_str)
-    card_net = SummaryCard("Net Worth", "0.00", "cyan", "monetization_on", summary_font_delta, current_font_weight_str)
     
     # --- 5. Transactions List ---
     txt_heading_recent = ft.Text(T("recent_trans"), size=16, weight="bold")
@@ -386,7 +417,10 @@ def real_main(page: ft.Page):
         
         btn_expense.content.controls[1].value = T("expense")
         btn_income.content.controls[1].value = T("income")
-        btn_open_dashboard.content.controls[1].value = T("overview") + " / Cards"
+        
+        # [CHANGE] Update separate buttons
+        btn_overview.content.controls[1].value = T("overview")
+        btn_cards.content.controls[1].value = T("credit_cards")
         
         page.update()
 
@@ -524,6 +558,7 @@ def real_main(page: ft.Page):
         dialogs.open_top10_dialog(page, current_db, config, cal.year, cal.month, d_font_specs)
 
     def show_recurring_dialog():
+        d_font_delta, d_font_weight = get_font_specs()
         rec_col = ft.Column(spacing=5, scroll=ft.ScrollMode.AUTO, height=400)
         
         def refresh_rec_list():
@@ -531,26 +566,78 @@ def real_main(page: ft.Page):
             recs = current_db.get_recurring()
             if not recs:
                 rec_col.controls.append(ft.Text(T("no_items"), color="grey"))
-                if rec_col.page:
-                    rec_col.update()
+                if rec_col.page: rec_col.update()
                 return
 
+            cards_db = current_db.get_cards()
+            card_map = {c[0]: {'name': c[1], 'color': c[4]} for c in cards_db}
             check_month = f"{cal.year}-{cal.month:02d}"
             
+            recs_data = []
+            now = datetime.now()
+            current_day_ref = now.day if cal.year == now.year and cal.month == now.month else (31 if datetime(cal.year, cal.month, 1) < now else 0)
+
             for r in recs:
-                 rid, day, item_name, amt, cat = r[:5]
-                 pid = r[5] if len(r) > 5 else None
-                 auto = r[6] if len(r) > 6 else 0
+                try:
+                    rid, day, item_name, amt, cat, pid, auto = r
+                except ValueError:
+                    rid, day, item_name, amt, cat = r[:5]
+                    pid, auto = None, 0
+                
+                is_paid = current_db.is_recurring_paid_v2(item_name, amt, cat, check_month, pid)
+                recs_data.append({'data': r, 'is_paid': is_paid, 'day': day, 'auto': auto, 'pid': pid})
+
+            recs_data.sort(key=lambda x: x['is_paid'])
+
+            for item_dict in recs_data:
+                 r = item_dict['data']
+                 is_paid = item_dict['is_paid']
+                 day = item_dict['day']
+                 auto = item_dict['auto']
+                 pid = item_dict['pid']
+                 rid, _, item_name, amt, cat, _, _ = r
                  
-                 is_paid = current_db.is_recurring_paid_v2(item_name, amt, cat, check_month, pid)
+                 is_due_alert = (not is_paid) and (current_day_ref >= day)
+                 day_bg = COLOR_ALERT if is_due_alert else "black26"
+                 day_col = "white" if is_due_alert else "white"
+
+                 meta_info = [ft.Text(format_currency(amt), color=COLOR_EXPENSE, size=12)]
                  
-                 btn_text = T("paid") if is_paid else T("pay")
-                 btn_state = True if is_paid else False
-                 
-                 pay_func = lambda e, i=item_name, a=amt, c=cat, d=day, p=pid: [
-                     dialogs.pay_recurring_action(page, current_db, refresh_ui, i,a,c,d,check_month,p, selected_date_str=current_filter_date),
-                     page.close(dlg_rec)
-                 ]
+                 if pid and pid in card_map:
+                    c_name = card_map[pid]['name']
+                    c_color = card_map[pid]['color']
+                    meta_info.append(ft.Container(
+                        content=ft.Text(f"{c_name}", size=10, weight="bold", color="white"),
+                        bgcolor=c_color, 
+                        padding=ft.padding.symmetric(horizontal=4, vertical=1), 
+                        border_radius=3
+                    ))
+
+                 if auto == 1:
+                    meta_info.append(ft.Icon(name="bolt", color="yellow", size=12, tooltip="Auto Pay"))
+
+                 btn_action = None
+                 if auto == 1 and pid:
+                    if is_paid:
+                        btn_action = ft.ElevatedButton(T("paid"), disabled=True, height=30, style=ft.ButtonStyle(padding=5))
+                    else:
+                        c_color = card_map[pid]['color'] if pid in card_map else "yellow"
+                        btn_action = ft.Container(
+                            content=ft.Text("Auto", size=12, color=c_color, weight="bold"),
+                            padding=ft.padding.symmetric(horizontal=10, vertical=4),
+                            border=ft.border.all(1, c_color),
+                            border_radius=5,
+                            tooltip="Waiting for auto-pay date"
+                        )
+                 else:
+                     pay_func = lambda e, i=item_name, a=amt, c=cat, d=day, p=pid: [
+                         dialogs.pay_recurring_action(page, current_db, refresh_ui, i,a,c,d,check_month,p, selected_date_str=current_filter_date),
+                         page.close(dlg_rec)
+                     ]
+                     if is_paid:
+                         btn_action = ft.ElevatedButton(T("paid"), disabled=True, height=30, style=ft.ButtonStyle(padding=5))
+                     else:
+                         btn_action = ft.ElevatedButton(T("pay"), on_click=pay_func, height=30, style=ft.ButtonStyle(padding=5, bgcolor=COLOR_PRIMARY, color="white"))
                  
                  del_func = lambda e, id=rid: [
                      dialogs.confirm_delete_rec(page, current_db, config, lambda: [refresh_ui(), refresh_rec_list()], id)
@@ -558,10 +645,13 @@ def real_main(page: ft.Page):
 
                  row = ft.Container(
                      content=ft.Row([
-                         ft.Container(ft.Text(f"{day:02d}", weight="bold"), bgcolor="black26", width=40, alignment=ft.alignment.center, padding=5, border_radius=5),
-                         ft.Column([ft.Text(item_name), ft.Text(format_currency(amt), color=COLOR_EXPENSE, size=12)], expand=True, spacing=0),
-                         ft.ElevatedButton(btn_text, disabled=btn_state, on_click=pay_func, height=30, style=ft.ButtonStyle(padding=5)),
-                         ft.IconButton("close", icon_size=16, on_click=del_func)
+                         ft.Container(ft.Text(f"{day:02d}", weight="bold", color=day_col), bgcolor=day_bg, width=40, alignment=ft.alignment.center, padding=5, border_radius=5),
+                         ft.Column([
+                             ft.Text(item_name, size=14, weight=d_font_weight), 
+                             ft.Row(meta_info, spacing=5)
+                         ], expand=True, spacing=0),
+                         btn_action,
+                         ft.IconButton("close", icon_size=16, icon_color="grey", on_click=del_func)
                      ]),
                      bgcolor=COLOR_SURFACE, padding=5, border_radius=8
                  )
@@ -574,7 +664,7 @@ def real_main(page: ft.Page):
         
         dlg_rec = ft.AlertDialog(
             title=ft.Row([ft.Text(T("recurring")), ft.IconButton("add", on_click=lambda _: open_add_rec(None))], alignment="spaceBetween"),
-            content=ft.Container(rec_col, width=300),
+            content=ft.Container(rec_col, width=350), 
             actions=[ft.TextButton(T("close"), on_click=lambda _: page.close(dlg_rec))]
         )
         page.open(dlg_rec)
@@ -645,7 +735,6 @@ def real_main(page: ft.Page):
         )
         page.open(dlg)
 
-    # [FIX] Bind buttons to function (เชื่อมปุ่มให้ทำงาน)
     btn_expense.on_click = lambda e: open_manual_add(e, "expense")
     btn_income.on_click = lambda e: open_manual_add(e, "income")
 
@@ -698,12 +787,34 @@ def real_main(page: ft.Page):
         nonlocal current_db
         time.sleep(0.5)
         
-        # [NEW LOGIC] บังคับบันทึก path ลง config เสมอ
         config["db_path"] = selected_path
         save_config(config)
         
         current_db = DatabaseManager(selected_path)
         current_db.connect()
+ 
+        # เชื่อมต่อ CloudManager
+        cloud_mgr.db = current_db
+        cloud_mgr.config = config
+        cloud_mgr.base_url = config.get("firebase_url", "").rstrip('/')
+
+        # ถ้ามี URL Cloud Configured
+        if config.get("firebase_url"):
+            # [FIXED LOGIC] ตรวจสอบว่ามีการซ่อม UUID หรือไม่
+            if current_db.uuid_fixed:
+                # ถ้ามีการซ่อม UUID แสดงว่าข้อมูลบน Cloud เป็นข้อมูลเก่า (Bad Data)
+                # ต้องทำการ Force Push (ทับ Cloud) แทนการ Sync
+                print("Migration detected: Force Pushing to Cloud to clean bad data...")
+                safe_show_snack("System Updated: Cleaning Cloud Data...", "blue")
+                cloud_mgr.force_push(callback=lambda msg: print(f"Cloud Force Push: {msg}"))
+            else:
+                # ถ้าปกติ ก็ Sync ตามเดิม
+                print("App Start: Syncing with Cloud...")            
+                cloud_mgr.sync_data(callback=lambda msg: print(f"Cloud: {msg}"))
+            
+            # เมื่อข้อมูลในเครื่องเปลี่ยน ให้ Sync ขึ้น Cloud ทันที
+            current_db.on_data_changed = lambda: cloud_mgr.sync_data()
+       
         cal.set_db(current_db)
         
         main_container.content = build_mobile_view()
