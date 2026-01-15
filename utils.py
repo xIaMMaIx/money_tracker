@@ -11,7 +11,6 @@ from types import ModuleType
 try:
     import wsgiref
 except ImportError:
-    # ถ้า import ไม่ได้ (Android) ให้สร้างของปลอม
     mock_wsgiref = ModuleType("wsgiref")
     sys.modules["wsgiref"] = mock_wsgiref
     
@@ -41,13 +40,11 @@ try:
 except ImportError:
     pass
 
-# [UPDATED] ตรวจสอบ PyAudio แบบยืดหยุ่น (ใช้ได้ทั้ง PC และ Android)
 HAS_PYAUDIO = False
 try:
     import pyaudio
     HAS_PYAUDIO = True
 except ImportError:
-    # บน Android ไม่มี Library นี้ มันจะเข้า case นี้และทำงานต่อได้โดยไม่มีเสียง
     pass
 
 HAS_GSPREAD = False
@@ -94,7 +91,7 @@ def parse_db_date(date_str):
             return datetime.now()
 
 # -------------------------------------------------------------
-# [LOGIC] Thai Money Parser (Robust "Saen-Ha" & Cleanup)
+# [LOGIC] Thai Money Parser (รองรับ Time Format xx:xx เป็นทศนิยม)
 # -------------------------------------------------------------
 def parse_thai_money(text):
     original_text = text
@@ -103,6 +100,13 @@ def parse_thai_money(text):
     text = text.replace(",", "")
     text = text.replace("กับ", "")
     text = text.replace("และ", "")
+    
+    # [FIX] เปลี่ยน : เป็น DOTMARKER ด้วย (แก้กรณี Google ส่งมาเป็น 34:48)
+    text = text.replace(":", " DOTMARKER ")
+    
+    # เปลี่ยนคำว่า "จุด" และ "." เป็น DOTMARKER
+    text = text.replace("จุด", " DOTMARKER ")
+    text = text.replace(".", " DOTMARKER ")
 
     # 2. Define Values & Units
     thai_vals = {
@@ -121,11 +125,12 @@ def parse_thai_money(text):
     raw_tokens = []
     if HAS_PYTHAINLP:
         try:
-            raw_tokens = text_to_num(text)
+            raw_tokens = text_to_num(text) 
+            raw_tokens = re.findall(r"(\d+(?:\.\d+)?|\w+|DOTMARKER)", text)
         except:
-            raw_tokens = re.findall(r"(\d+(?:\.\d+)?|\w+)", text)
+            raw_tokens = re.findall(r"(\d+(?:\.\d+)?|\w+|DOTMARKER)", text)
     else:
-        all_keywords = list(thai_vals.keys()) + list(unit_map.keys())
+        all_keywords = list(thai_vals.keys()) + list(unit_map.keys()) + ["DOTMARKER"]
         str_keywords = [k for k in all_keywords if isinstance(k, str)]
         str_keywords.sort(key=len, reverse=True)
         pattern = r"(\d+(?:\.\d+)?|" + "|".join(str_keywords) + r")"
@@ -144,7 +149,7 @@ def parse_thai_money(text):
     def get_token_val(t):
         if isinstance(t, (int, float)): return float(t)
         if isinstance(t, str):
-            if re.match(r"^\d+(?:\.\d+)?$", t): return float(t)
+            if re.match(r"^\d+(\.\d+)?$", t): return float(t)
             if t in thai_vals: return float(thai_vals[t])
             if t in unit_map: return float(unit_map[t])
         return None
@@ -160,13 +165,56 @@ def parse_thai_money(text):
     total_amount = 0.0
     current_val = 0.0
     
+    is_decimal_mode = False
+    decimal_digits_str = "" 
+
     i = 0
     while i < len(tokens):
         token = tokens[i]
+        
+        # -------------------------------------------------------
+        # CASE 1: เจอ Marker ของจุดทศนิยม (รวมถึง : ที่แปลงมาแล้ว)
+        # -------------------------------------------------------
+        if token == "DOTMARKER":
+            # รวมยอดจำนวนเต็มเข้า Total
+            total_amount += current_val
+            current_val = 0
+            
+            # เข้าโหมดทศนิยม
+            is_decimal_mode = True
+            i += 1
+            continue
+
         val = get_token_val(token)
+        
+        # -------------------------------------------------------
+        # CASE 2: อยู่ในโหมดทศนิยม
+        # -------------------------------------------------------
+        if is_decimal_mode:
+            if val is not None:
+                # ข้ามคำว่า "สิบ", "ร้อย", "พัน" ถ้าหลุดมาในทศนิยม
+                if val in [10, 100, 1000, 10000, 100000, 1000000]:
+                    if val == 10 and decimal_digits_str == "":
+                        decimal_digits_str += "1"
+                    else:
+                        pass 
+                
+                elif val >= 0:
+                    if isinstance(token, str) and token.startswith("0") and len(token) > 1 and "." not in token:
+                         decimal_digits_str += token
+                    elif int(val) == val:
+                        decimal_digits_str += str(int(val))
+                    else:
+                        decimal_digits_str += str(val).replace(".", "")
+            
+            i += 1
+            continue
+
+        # -------------------------------------------------------
+        # CASE 3: จำนวนเต็ม
+        # -------------------------------------------------------
         is_unit = is_unit_token(token)
         
-        # Special check: number acting as unit
         if val is not None and not is_unit and current_val > 0 and val in [10, 100, 1000, 10000, 100000, 1000000]:
             is_unit = True
 
@@ -181,22 +229,20 @@ def parse_thai_money(text):
                 total_amount += (current_val * unit_val)
                 current_val = 0
             
-            # [COLLOQUIAL LOGIC]: "แสนห้า", "หมื่นแปด"
             if unit_val >= 1000 and (i + 1 < len(tokens)):
                 next_token = tokens[i+1]
-                next_val = get_token_val(next_token)
-                
-                if next_val is not None and 1 <= next_val <= 9:
-                    is_next_unit = False
-                    if i + 2 < len(tokens):
-                        next_next_token = tokens[i+2]
-                        if is_unit_token(next_next_token):
-                            is_next_unit = True
-                    
-                    if not is_next_unit:
-                        colloquial_amt = next_val * (unit_val / 10)
-                        total_amount += colloquial_amt
-                        i += 1 
+                if next_token != "DOTMARKER":
+                    next_val = get_token_val(next_token)
+                    if next_val is not None and 1 <= next_val <= 9:
+                        is_next_unit = False
+                        if i + 2 < len(tokens):
+                            next_next_token = tokens[i+2]
+                            if is_unit_token(next_next_token):
+                                is_next_unit = True
+                        if not is_next_unit:
+                            colloquial_amt = next_val * (unit_val / 10)
+                            total_amount += colloquial_amt
+                            i += 1 
                         
         elif val is not None:
             if current_val > 0: total_amount += current_val
@@ -204,12 +250,20 @@ def parse_thai_money(text):
         
         i += 1
 
+    # 5. Finalize
     total_amount += current_val
+    
+    if is_decimal_mode and decimal_digits_str:
+        try:
+            decimal_val = float(f"0.{decimal_digits_str}")
+            total_amount += decimal_val
+        except:
+            pass
 
-    # Extraction
+    # 6. Extraction
     item_text = original_text.replace(",", "")
     remove_list = list(thai_vals.keys()) + [k for k in unit_map.keys() if isinstance(k, str)] + [
-        "บาท", "สตางค์", "เท่าไหร่", "กี่บาท", "ราคา", "จ่าย", "ซื้อ", "ค่า", "กับ", "และ"
+        "บาท", "สตางค์", "เท่าไหร่", "กี่บาท", "ราคา", "จ่าย", "ซื้อ", "ค่า", "กับ", "และ", "จุด", ":"
     ]
     for w in remove_list: item_text = item_text.replace(w, "")
     item_text = re.sub(r"[-+]?\d*\.\d+|\d+", "", item_text)

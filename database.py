@@ -1,7 +1,8 @@
 # database.py
 import sqlite3
 import uuid
-from datetime import datetime
+import calendar # [NEW] สำหรับคำนวณวันสิ้นเดือน
+from datetime import datetime, timedelta # [NEW] เพิ่ม timedelta
 from utils import parse_db_date
 
 class DatabaseManager:
@@ -9,7 +10,7 @@ class DatabaseManager:
         self.db_path = db_path
         self.conn = None
         self.on_data_changed = None
-        self.uuid_fixed = False  # [NEW] ตัวแปรเช็คสถานะการซ่อม UUID
+        self.uuid_fixed = False
 
     def _notify(self):
         if self.on_data_changed:
@@ -27,7 +28,6 @@ class DatabaseManager:
         self.add_defaults()
 
     def create_tables(self):
-        # ... (โค้ดเดิม) ...
         c = self.conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS transactions (id INTEGER PRIMARY KEY, type TEXT, item TEXT, amount REAL, category TEXT, date TIMESTAMP, payment_id INTEGER, is_deleted INTEGER DEFAULT 0, uuid TEXT UNIQUE)''')
         c.execute('''CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY, name TEXT, type TEXT, keywords TEXT, is_deleted INTEGER DEFAULT 0, uuid TEXT UNIQUE)''')
@@ -37,10 +37,9 @@ class DatabaseManager:
         self.conn.commit()
 
     def migrate_db(self):
-        self.uuid_fixed = False # Reset flag
+        self.uuid_fixed = False 
         c = self.conn.cursor()
         
-        # เพิ่มคอลัมน์ (โค้ดเดิม)
         tables = {
             "transactions": ["is_deleted INTEGER DEFAULT 0", "payment_id INTEGER DEFAULT NULL", "uuid TEXT"],
             "recurring_expenses": ["is_deleted INTEGER DEFAULT 0", "payment_id INTEGER DEFAULT NULL", "auto_pay INTEGER DEFAULT 0", "uuid TEXT"],
@@ -56,26 +55,21 @@ class DatabaseManager:
                     except: pass
         self.conn.commit()
         
-        # [FIXED] Backfill UUID และตั้งค่า flag
         for table in tables.keys():
             try:
-                # เช็ค UUID ที่ว่าง หรือ สั้นผิดปกติ (เช่น เลขตัวเดียว)
                 query = f"SELECT id FROM {table} WHERE uuid IS NULL OR uuid = '' OR length(uuid) < 32"
                 rows = c.execute(query).fetchall()
-                
                 if rows:
                     print(f"Fixing UUIDs for {table}: {len(rows)} items...")
                     for r in rows:
                         new_uid = str(uuid.uuid4())
                         c.execute(f"UPDATE {table} SET uuid=? WHERE id=?", (new_uid, r[0]))
-                    self.uuid_fixed = True # [IMPORTANT] แจ้งว่ามีการแก้ไขเกิดขึ้น
+                    self.uuid_fixed = True
             except Exception as e: 
                 print(f"Migration Error ({table}): {e}")
         self.conn.commit()
 
-    # ... (ส่วนที่เหลือของ database.py เหมือนเดิมทุกอย่าง) ...
     def cleanup_duplicate_recurring(self):
-        # ... copy code เดิมมา ...
         try:
             self.conn.execute("""
                 UPDATE recurring_expenses 
@@ -93,7 +87,6 @@ class DatabaseManager:
             print(f"Cleanup Error: {e}")
 
     def purge_deleted_data(self):
-        # ... copy code เดิมมา ...
         try:
             self.conn.execute("DELETE FROM transactions WHERE is_deleted = 1")
             self.conn.execute("DELETE FROM recurring_expenses WHERE is_deleted = 1")
@@ -112,7 +105,6 @@ class DatabaseManager:
             return False
 
     def add_defaults(self):
-        # ... copy code เดิมมา ...
         defaults = [
             ("อาหาร", "expense", "ข้าว,ก๋วยเตี๋ยว,food"), 
             ("เดินทาง", "expense", "รถเมล์,bts,mrt,taxi"), 
@@ -154,10 +146,9 @@ class DatabaseManager:
         return last_id
 
     def delete_transaction(self, tid):
-        # [NEW] ป้องกันการลบรายการที่ระบบสร้างขึ้น (ยอดยกมา)
         check = self.conn.execute("SELECT item FROM transactions WHERE id=?", (tid,)).fetchone()
         if check and check[0] in ["ยอดยกมา", "Balance Forward"]:
-            return  # ไม่ทำอะไรเลย (User ลบไม่ได้)
+            return  
 
         old_row = self.conn.execute("SELECT date FROM transactions WHERE id=?", (tid,)).fetchone()
         self.conn.execute("UPDATE transactions SET is_deleted=1 WHERE id=?", (tid,))
@@ -166,10 +157,9 @@ class DatabaseManager:
         self._notify()
 
     def update_transaction(self, tid, item, amount, category, payment_id=None, date=None):
-        # [NEW] ป้องกันการแก้ไขรายการที่ระบบสร้างขึ้น
         check = self.conn.execute("SELECT item FROM transactions WHERE id=?", (tid,)).fetchone()
         if check and check[0] in ["ยอดยกมา", "Balance Forward"]:
-            return # ไม่ทำอะไรเลย
+            return 
 
         if date:
              self.conn.execute("UPDATE transactions SET item=?, amount=?, category=?, payment_id=?, date=?, is_deleted=0 WHERE id=?", (item, amount, category, payment_id, date, tid))
@@ -326,13 +316,8 @@ class DatabaseManager:
         self.conn.execute("DELETE FROM credit_cards"); self.conn.commit(); self._notify()
     
     def get_card_usage(self, card_id, month_filter=None):
-        # 1. หายอดใช้จ่ายผ่านบัตร (Expense)
         qs = "SELECT SUM(amount) FROM transactions WHERE payment_id=? AND type='expense' AND (is_deleted=0 OR is_deleted IS NULL)"
-        
-        # 2. หายอดจ่ายบิลบัตร (Repayment)
         qr = "SELECT SUM(amount) FROM transactions WHERE payment_id=? AND type='repayment' AND (is_deleted=0 OR is_deleted IS NULL)"
-        
-        # 3. [เพิ่ม] หายอดเงินคืนเข้าบัตร (Income / Refund)
         qi = "SELECT SUM(amount) FROM transactions WHERE payment_id=? AND type='income' AND (is_deleted=0 OR is_deleted IS NULL)"
         
         args = [card_id]
@@ -341,19 +326,69 @@ class DatabaseManager:
                 y, m = map(int, month_filter.split('-')); ny, nm = (y+1, 1) if m==12 else (y, m+1); cutoff = f"{ny}-{nm:02d}-01"
                 qs += " AND date(date) < date(?)"
                 qr += " AND date(date) < date(?)"
-                qi += " AND date(date) < date(?)" # เพิ่ม filter ให้ query ใหม่
+                qi += " AND date(date) < date(?)" 
                 args.append(cutoff)
             except: pass
             
         s = self.conn.execute(qs, tuple(args)).fetchone()[0] or 0.0
         r = self.conn.execute(qr, tuple(args)).fetchone()[0] or 0.0
-        i = self.conn.execute(qi, tuple(args)).fetchone()[0] or 0.0 # ดึงค่า Income
-        
-        # สูตรใหม่: ยอดใช้ - ยอดจ่ายคืน - ยอดเงินคืน(Refund)
+        i = self.conn.execute(qi, tuple(args)).fetchone()[0] or 0.0
         return s - r - i
 
+    # [FIXED] Updated to support Billing Cycle
     def get_card_transactions(self, card_id, month_str):
-        return self.conn.execute("SELECT id, type, item, amount, category, date FROM transactions WHERE payment_id=? AND strftime('%Y-%m', date)=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY date DESC", (card_id, month_str)).fetchall()
+        # 1. Get Closing Day
+        row = self.conn.execute("SELECT closing_day FROM credit_cards WHERE id=?", (card_id,)).fetchone()
+        closing_day = row[0] if row else 0
+
+        # Fallback to standard calendar month if no closing day set
+        if not closing_day or closing_day < 1:
+            return self.conn.execute("SELECT id, type, item, amount, category, date FROM transactions WHERE payment_id=? AND strftime('%Y-%m', date)=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY date DESC", (card_id, month_str)).fetchall()
+
+        # 2. Calculate Billing Cycle
+        try:
+            t_year, t_month = map(int, month_str.split('-'))
+
+            # End Date = Closing Day of the selected month
+            # Handle short months (e.g., Closing Day 31 but Feb has 28)
+            _, max_days_curr = calendar.monthrange(t_year, t_month)
+            eff_closing_day = min(closing_day, max_days_curr)
+            
+            end_date = datetime(t_year, t_month, eff_closing_day, 23, 59, 59)
+
+            # Start Date = (Previous Month Closing Day) + 1 Day
+            if t_month == 1:
+                prev_year = t_year - 1
+                prev_month = 12
+            else:
+                prev_year = t_year
+                prev_month = t_month - 1
+            
+            _, max_days_prev = calendar.monthrange(prev_year, prev_month)
+            eff_prev_closing_day = min(closing_day, max_days_prev)
+            
+            prev_closing_date = datetime(prev_year, prev_month, eff_prev_closing_day, 0, 0, 0)
+            start_date = prev_closing_date + timedelta(days=1)
+
+            # Convert to strings for SQL
+            s_str = start_date.strftime("%Y-%m-%d %H:%M:%S")
+            e_str = end_date.strftime("%Y-%m-%d %H:%M:%S")
+
+            # 3. Query with Date Range
+            sql = """
+                SELECT id, type, item, amount, category, date 
+                FROM transactions 
+                WHERE payment_id=? 
+                AND date >= ? AND date <= ?
+                AND (is_deleted=0 OR is_deleted IS NULL) 
+                ORDER BY date DESC
+            """
+            return self.conn.execute(sql, (card_id, s_str, e_str)).fetchall()
+
+        except Exception as e:
+            print(f"Billing Cycle Calc Error: {e}")
+            # Fallback
+            return self.conn.execute("SELECT id, type, item, amount, category, date FROM transactions WHERE payment_id=? AND strftime('%Y-%m', date)=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY date DESC", (card_id, month_str)).fetchall()
 
     def get_setting(self, key, default=""):
         res = self.conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
@@ -372,27 +407,17 @@ class DatabaseManager:
         now = datetime.now()
         has_change = False
         
-        # วนลูปไปข้างหน้าเรื่อยๆ เพื่อส่งผลกระทบของยอดเงินไปยังเดือนถัดๆ ไป
         while True:
-            # คำนวณเดือนถัดไป (Next Month / Year)
             nm = cm + 1; ny = cy
             if nm > 12: nm = 1; ny += 1
             
-            # หยุดถ้าเกินเวลาปัจจุบันไปไกล (เช่น เกิน 5 ปี หรือเกินเดือนปัจจุบันไปแล้ว)
-            # หมายเหตุ: เรายอมให้คำนวณเกินเดือนปัจจุบันไป 1 step เพื่อสร้างยอดยกมาของเดือนหน้าเตรียมไว้
             if (ny > now.year + 5): break 
-            if (ny == now.year and nm > now.month + 1): break # +1 เผื่ออนาคต 1 เดือน
+            if (ny == now.year and nm > now.month + 1): break
             
-            # 1. คำนวณยอดคงเหลือของเดือนปัจจุบัน (cy, cm)
-            # ฟังก์ชันนี้รวม Income - Expense และรวม "ยอดยกมา" ที่มีอยู่ในเดือนนี้ด้วย
             bal = self.get_month_balance(cy, cm)
-            
-            # เตรียมตัวแปรสำหรับเดือนถัดไป
             nms = f"{ny}-{nm:02d}"
-            td = datetime(ny, nm, 1) # วันที่ 1 ของเดือนถัดไป
+            td = datetime(ny, nm, 1) 
             
-            # 2. ค้นหารายการ 'ยอดยกมา' ในเดือนถัดไป (หาทั้งหมด! ทั้งที่ Active และ Deleted)
-            # [FIXED] ตัดเงื่อนไข is_deleted=0 ออก เพื่อให้เจอรายการที่เคยถูกลบ
             rows = self.conn.execute(
                 "SELECT id, amount, is_deleted FROM transactions WHERE strftime('%Y-%m', date)=? AND (item='ยอดยกมา' OR item='Balance Forward') ORDER BY id", 
                 (nms,)
@@ -400,28 +425,21 @@ class DatabaseManager:
             
             exist = None
             if rows:
-                exist = rows[0] # ยึดตัวแรกเป็นหลัก
-                # ถ้ามีข้อมูลซ้ำ (Duplicate) ให้ลบทิ้งให้หมด เหลือไว้แค่ตัวเดียว
+                exist = rows[0] 
                 if len(rows) > 1:
                     for r_dup in rows[1:]:
-                        if r_dup[2] == 0: # ถ้ามัน Active อยู่ ให้ลบซะ
+                        if r_dup[2] == 0: 
                             self.conn.execute("UPDATE transactions SET is_deleted=1 WHERE id=?", (r_dup[0],))
                             has_change = True
 
-            # 3. Logic การสร้าง/แก้ไข/ลบ
             if bal > 0:
-                # --- กรณีมียอดเงินยกไป ---
                 if exist:
                     current_amt = exist[1]
                     current_status = exist[2]
-                    
-                    # ถ้าจำนวนเงินเปลี่ยน หรือ สถานะเดิมคือ 'ถูกลบ' (is_deleted=1)
                     if abs(current_amt - bal) > 0.01 or current_status == 1:
-                        # [FIXED] กู้คืนรายการ (is_deleted=0) และอัปเดตยอดเงิน
                         self.conn.execute("UPDATE transactions SET amount=?, is_deleted=0 WHERE id=?", (bal, exist[0]))
                         has_change = True
                 else: 
-                    # ถ้าไม่มีรายการเลย -> สร้างใหม่ (Insert)
                     uid = str(uuid.uuid4())
                     self.conn.execute(
                         "INSERT INTO transactions (type, item, amount, category, date, payment_id, is_deleted, uuid) VALUES (?,?,?,?,?,NULL,0,?)", 
@@ -429,17 +447,13 @@ class DatabaseManager:
                     )
                     has_change = True
             else:
-                # --- กรณีไม่มีเงินเหลือ หรือ ติดลบ (ไม่ควรมี ยอดยกมา) ---
                 if exist:
-                    # ถ้ามีรายการอยู่ และมันยังไม่ถูกลบ -> สั่งลบ (Soft Delete)
                     if exist[2] == 0:
                         self.conn.execute("UPDATE transactions SET is_deleted=1 WHERE id=?", (exist[0],))
                         has_change = True
             
-            # ขยับไปทำเดือนถัดไป (ลูกโซ่)
             cm = nm; cy = ny
             
         if has_change:
             self.conn.commit()
-            # แจ้งเตือน UI ให้รีเฟรช (ถ้าจำเป็น)
             self._notify()

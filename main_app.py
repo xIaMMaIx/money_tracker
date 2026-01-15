@@ -824,14 +824,19 @@ def real_main(page: ft.Page):
     def check_startup():
         main_container.content = build_splash_view()
         page.update()
-        time.sleep(1.0) 
+        
+        # [FIX] เพิ่มส่วน Animation ที่ขาดหายไป
+        time.sleep(0.1)       # รอเสี้ยววินาทีเพื่อให้ UI Render เสร็จ
+        splash_icon.scale = 1.0  # สั่งขยายไอคอน
+        splash_icon.update()     # อัปเดตหน้าจอเฉพาะไอคอน
+        time.sleep(1.5)       # รอให้ Animation เล่นจบและโชว์โลโก้สักพัก (ปรับเวลาได้ตามชอบ)
 
         target_db = db_path 
         if not os.path.exists(target_db):
             target_db = DEFAULT_DB_NAME
         
         init_application(target_db)
-
+        
     def start_auto_sync():
         def sync_loop():
             try:

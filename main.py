@@ -661,6 +661,8 @@ def main(page: ft.Page):
                             confirm(None)
                     threading.Thread(target=countdown, daemon=True).start()
 
+# ... (ภายในฟังก์ชัน start_listen ใน main.py) ...
+
         def record_thread():
             if not HAS_PYAUDIO: 
                 txt_status.value = "Error: PyAudio missing"
@@ -675,13 +677,26 @@ def main(page: ft.Page):
                 silence_start = None
                 has_spoken = False
                 
+                # [UPDATED] จับเวลาเริ่มต้นเพื่อ Limit 10 วินาที
+                recording_start_time = time.time()
+                TIMEOUT_SECONDS = 10
+
                 while recording_event.is_set():
                     try:
+                        # [UPDATED] ตรวจสอบว่าเกินเวลาที่กำหนดหรือไม่
+                        if time.time() - recording_start_time > TIMEOUT_SECONDS:
+                            break  # ตัดจบการบันทึกทันทีเมื่อครบ 10 วินาที
+
                         data = stream.read(1024, exception_on_overflow=False)
                         shorts = struct.unpack("%dh"%(len(data)//2), data)
                         rms = math.sqrt(sum(s**2 for s in shorts) / len(shorts))
                         visualizer.update_volume(rms)
-                        if rms > 400: has_spoken = True; silence_start = None; frames.append(data)
+                        
+                        # [UPDATED] ปรับ Threshold เป็น 500 เพื่อลดเสียงรบกวน
+                        if rms > 500: 
+                            has_spoken = True
+                            silence_start = None
+                            frames.append(data)
                         elif has_spoken:
                             frames.append(data)
                             if silence_start is None: silence_start = time.time()
