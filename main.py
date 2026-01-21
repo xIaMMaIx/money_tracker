@@ -302,7 +302,7 @@ def main(page: ft.Page):
         
         if cards_db:
              for c in cards_db:
-                 total_debt += current_db.get_card_usage(c[0], current_month_str)
+                 total_debt += current_db.get_card_usage(c[0])
 
         net_worth = bal - total_debt
 
@@ -326,7 +326,7 @@ def main(page: ft.Page):
             sm_span = 6 if count > 1 else 12 
             dynamic_col = {"xs": 12, "sm": sm_span, "md": desktop_span}
             for c in cards_db: 
-                usage_cumulative = current_db.get_card_usage(c[0], current_month_str)
+                usage_cumulative = current_db.get_card_usage(c[0])
                 cards_row.controls.append(MiniCardWidget(
                     c, 
                     lambda d: dialogs.open_pay_card_dialog(page, current_db, config, refresh_ui, d, current_filter_date),

@@ -1,8 +1,8 @@
 # database.py
 import sqlite3
 import uuid
-import calendar # [NEW] สำหรับคำนวณวันสิ้นเดือน
-from datetime import datetime, timedelta # [NEW] เพิ่ม timedelta
+import calendar
+from datetime import datetime, timedelta
 from utils import parse_db_date
 
 class DatabaseManager:
@@ -315,27 +315,50 @@ class DatabaseManager:
     def clear_all_cards(self):
         self.conn.execute("DELETE FROM credit_cards"); self.conn.commit(); self._notify()
     
+    # [FIXED] Updated to support Billing Cycle Calculation for Accuracy
     def get_card_usage(self, card_id, month_filter=None):
         qs = "SELECT SUM(amount) FROM transactions WHERE payment_id=? AND type='expense' AND (is_deleted=0 OR is_deleted IS NULL)"
         qr = "SELECT SUM(amount) FROM transactions WHERE payment_id=? AND type='repayment' AND (is_deleted=0 OR is_deleted IS NULL)"
         qi = "SELECT SUM(amount) FROM transactions WHERE payment_id=? AND type='income' AND (is_deleted=0 OR is_deleted IS NULL)"
         
+        # 1. Get Closing Day
+        row = self.conn.execute("SELECT closing_day FROM credit_cards WHERE id=?", (card_id,)).fetchone()
+        closing_day = row[0] if row else 0
+
         args = [card_id]
         if month_filter:
             try:
-                y, m = map(int, month_filter.split('-')); ny, nm = (y+1, 1) if m==12 else (y, m+1); cutoff = f"{ny}-{nm:02d}-01"
-                qs += " AND date(date) < date(?)"
-                qr += " AND date(date) < date(?)"
-                qi += " AND date(date) < date(?)" 
-                args.append(cutoff)
-            except: pass
+                y, m = map(int, month_filter.split('-'))
+                
+                if closing_day > 0:
+                    # Calculate Cutoff Date based on Closing Day of the Filtered Month
+                    # This ensures "January" view shows transactions only up to January's closing date
+                    _, max_days = calendar.monthrange(y, m)
+                    eff_day = min(closing_day, max_days)
+                    cutoff_dt = datetime(y, m, eff_day, 23, 59, 59)
+                    cutoff_str = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    qs += " AND date <= ?"
+                    qr += " AND date <= ?"
+                    qi += " AND date <= ?"
+                    args.append(cutoff_str)
+                else:
+                    # Fallback to standard calendar month logic (End of this month)
+                    ny, nm = (y+1, 1) if m==12 else (y, m+1)
+                    cutoff = f"{ny}-{nm:02d}-01"
+                    qs += " AND date(date) < date(?)"
+                    qr += " AND date(date) < date(?)"
+                    qi += " AND date(date) < date(?)" 
+                    args.append(cutoff)
+            except Exception as e: 
+                print(f"Error filtering card usage: {e}")
+                pass
             
         s = self.conn.execute(qs, tuple(args)).fetchone()[0] or 0.0
         r = self.conn.execute(qr, tuple(args)).fetchone()[0] or 0.0
         i = self.conn.execute(qi, tuple(args)).fetchone()[0] or 0.0
         return s - r - i
 
-    # [FIXED] Updated to support Billing Cycle
     def get_card_transactions(self, card_id, month_str):
         # 1. Get Closing Day
         row = self.conn.execute("SELECT closing_day FROM credit_cards WHERE id=?", (card_id,)).fetchone()

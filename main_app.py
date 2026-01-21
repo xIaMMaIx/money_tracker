@@ -237,9 +237,8 @@ def real_main(page: ft.Page):
         cards_db = current_db.get_cards()
         
         if cards_db:
-             month_str = f"{cal.year}-{cal.month:02d}"
              for c in cards_db:
-                 usage = current_db.get_card_usage(c[0], month_str)
+                 usage = current_db.get_card_usage(c[0])
                  mc = MiniCardWidget(
                     c, 
                     lambda d: [page.close(dlg_cards), dialogs.open_pay_card_dialog(page, current_db, config, refresh_ui, d, current_filter_date)],
@@ -476,7 +475,7 @@ def real_main(page: ft.Page):
         
         if cards_db:
              for c in cards_db:
-                 total_debt += current_db.get_card_usage(c[0], current_month_str)
+                 total_debt += current_db.get_card_usage(c[0])
 
         net_worth = bal - total_debt
 

@@ -122,28 +122,102 @@ def open_pay_card_dialog(page, db, config, refresh_cb, card_data, current_filter
     page.open(dlg)
 
 def open_card_history_dialog(page, db, config, refresh_cb, card_data, year, month):
-    cid, name, _, _, _ = card_data
+    # 1. ดึงข้อมูลวันตัดรอบ (Closing Day) มาจาก card_data (index ที่ 3)
+    cid, name, _, closing_day, _ = card_data
+    
+    # 2. [LOGIC FIX] ตรวจสอบเพื่อขยับรอบบิลอัตโนมัติ
+    now = datetime.now()
+    
+    # ทำงานเฉพาะเมื่อดู "เดือนปัจจุบัน" ตามปฏิทินจริง
+    if year == now.year and month == now.month:
+        # ถ้ามีการตั้งวันตัดรอบ (ไม่ใช่ 0) และ วันนี้เลยวันตัดรอบมาแล้ว
+        if closing_day and closing_day > 0 and now.day > closing_day:
+            # ขยับไปดูรอบบิลเดือนถัดไปทันที
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+
+    # สร้าง month_str สำหรับส่งให้ Database Query
     month_str = f"{year}-{month:02d}"
+    
+    # ดึงข้อมูลรายการ
     rows = db.get_card_transactions(cid, month_str)
+    
+    # 3. สร้าง UI ส่วนแสดงผล
     lv = ft.Column(spacing=5, scroll=ft.ScrollMode.AUTO, expand=True) 
     total_spent = 0.0
     total_paid = 0.0
     
-    header_row = ft.Container(content=ft.Row([ft.Text(T(config, "day"), size=12, color="grey", width=40), ft.Text(T(config, "item"), size=12, color="grey", expand=True), ft.Text(T(config, "amount"), size=12, color="grey", width=80, text_align=ft.TextAlign.RIGHT)], alignment="spaceBetween"), padding=ft.padding.only(left=10, right=10, bottom=5), border=ft.border.only(bottom=ft.BorderSide(1, "#444444")))
+    # ส่วนหัวตาราง
+    header_row = ft.Container(
+        content=ft.Row([
+            ft.Text(T(config, "day"), size=12, color="grey", width=40), 
+            ft.Text(T(config, "item"), size=12, color="grey", expand=True), 
+            ft.Text(T(config, "amount"), size=12, color="grey", width=80, text_align=ft.TextAlign.RIGHT)
+        ], alignment="spaceBetween"), 
+        padding=ft.padding.only(left=10, right=10, bottom=5), 
+        border=ft.border.only(bottom=ft.BorderSide(1, "#444444"))
+    )
 
-    if not rows: lv.controls.append(ft.Container(content=ft.Text(T(config, "no_items"), color="grey", italic=True), alignment=ft.alignment.center, padding=20))
+    # วนลูปแสดงรายการ
+    if not rows: 
+        lv.controls.append(
+            ft.Container(
+                content=ft.Text(T(config, "no_items"), color="grey", italic=True), 
+                alignment=ft.alignment.center, 
+                padding=20
+            )
+        )
     else:
         for i, r in enumerate(rows):
             r_type, r_item, r_amt, r_date = r[1], r[2], r[3], parse_db_date(r[5]).strftime("%d/%m")
+            
+            # แยกสี รายรับ(จ่ายบิล) vs รายจ่าย
             item_color = COLOR_INCOME if r_type == "repayment" else COLOR_EXPENSE
-            if r_type == "repayment": total_paid += r_amt
-            else: total_spent += r_amt 
-            item_row = ft.Container(content=ft.Row([ft.Text(r_date, size=12, color="white54", width=40), ft.Text(r_item, size=14, expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS), ft.Text(format_currency(r_amt), size=14, color=item_color, weight="bold", width=80, text_align=ft.TextAlign.RIGHT)], alignment="spaceBetween"), padding=ft.padding.symmetric(horizontal=10, vertical=10), bgcolor=COLOR_SURFACE, border_radius=5)
+            
+            if r_type == "repayment": 
+                total_paid += r_amt
+            else: 
+                total_spent += r_amt 
+            
+            item_row = ft.Container(
+                content=ft.Row([
+                    ft.Text(r_date, size=12, color="white54", width=40), 
+                    ft.Text(r_item, size=14, expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS), 
+                    ft.Text(format_currency(r_amt), size=14, color=item_color, weight="bold", width=80, text_align=ft.TextAlign.RIGHT)
+                ], alignment="spaceBetween"), 
+                padding=ft.padding.symmetric(horizontal=10, vertical=10), 
+                bgcolor=COLOR_SURFACE, 
+                border_radius=5
+            )
             lv.controls.append(item_row)
 
+    # สรุปยอดด้านล่าง
     txt_paid = ft.Text(f"Paid: {format_currency(total_paid)}", size=14, weight="bold", color=COLOR_INCOME)
     txt_spent = ft.Text(f"Spent: {format_currency(total_spent)}", size=14, weight="bold", color=COLOR_EXPENSE)
-    dlg = ft.AlertDialog(title=ft.Row([ft.Icon("credit_card", size=24, color=COLOR_PRIMARY), ft.Text(f"{name} ({month_str})")], spacing=10), content=ft.Container(content=ft.Column([header_row, lv, ft.Divider(height=1, color="grey"), ft.Row([txt_paid, txt_spent], alignment="spaceBetween")], spacing=10, expand=True), width=400, height=400, padding=0), actions=[ft.TextButton(T(config, "close"), on_click=lambda e: [setattr(dlg, 'open', False), page.update()])])
+    
+    # ประกอบร่าง Dialog
+    dlg = ft.AlertDialog(
+        title=ft.Row([
+            ft.Icon("credit_card", size=24, color=COLOR_PRIMARY), 
+            ft.Text(f"{name} ({month_str})")
+        ], spacing=10), 
+        content=ft.Container(
+            content=ft.Column([
+                header_row, 
+                lv, 
+                ft.Divider(height=1, color="grey"), 
+                ft.Row([txt_paid, txt_spent], alignment="spaceBetween")
+            ], spacing=10, expand=True), 
+            width=400, 
+            height=400, 
+            padding=0
+        ), 
+        actions=[
+            ft.TextButton(T(config, "close"), on_click=lambda e: [setattr(dlg, 'open', False), page.update()])
+        ]
+    )
     page.open(dlg)
     
 def open_add_rec_dialog(page, db, config, refresh_cb):
